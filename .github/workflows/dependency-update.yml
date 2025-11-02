@@ -1,0 +1,70 @@
+name: Update Dependencies
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_PATH: './ErezeptValidator/ErezeptValidator.sln'
+
+jobs:
+  update-dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Install dotnet-outdated tool
+      run: dotnet tool install --global dotnet-outdated-tool
+      
+    - name: Check for outdated packages
+      id: outdated
+      run: |
+        cd ErezeptValidator
+        OUTDATED=$(dotnet outdated --output json)
+        echo "outdated_packages=$OUTDATED" >> $GITHUB_OUTPUT
+        
+    - name: Update packages
+      if: steps.outdated.outputs.outdated_packages != '[]'
+      run: |
+        cd ErezeptValidator
+        dotnet outdated --upgrade
+        
+    - name: Test after updates
+      if: steps.outdated.outputs.outdated_packages != '[]'
+      run: |
+        dotnet restore ${{ env.SOLUTION_PATH }}
+        dotnet build ${{ env.SOLUTION_PATH }} --configuration Release
+        dotnet test ${{ env.SOLUTION_PATH }} --configuration Release --no-build
+        
+    - name: Create Pull Request
+      if: steps.outdated.outputs.outdated_packages != '[]'
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update NuGet dependencies'
+        title: 'chore: Update NuGet Dependencies'
+        body: |
+          This PR was automatically generated to update outdated NuGet packages.
+          
+          **Changes:**
+          - Updated NuGet packages to their latest compatible versions
+          
+          **Testing:**
+          - ✅ Build successful
+          - ✅ Tests passing
+          
+          Please review the changes and merge if appropriate.
+        branch: chore/update-dependencies
+        delete-branch: true
