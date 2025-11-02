@@ -1,0 +1,246 @@
+### Integration des GitHub-Repos `megadur/plausibus` in deine .NET 8 eRezept-Validator-API
+
+Hallo! Vielen Dank für den Link zum Repository **https://github.com/megadur/plausibus**. Ich habe es mir angeschaut – leider ist es derzeit **leer** (keine README-Beschreibung, keine Releases, keine Packages und keine sichtbaren Dateien/Folder außer dem Standard-GitHub-Layout). Das macht die direkte Nutzung schwierig, aber ich interpretiere das als **Basis für dein Projekt**: Wir können es als leeres Git-Repo **forken/clonen** und dort deine eRezept-Validierungslogik einbauen. So hast du ein zentrales Repo für die Entwicklung.
+
+Falls "plausibus" (was super zu "Plausibilitätsprüfung" für Rezepte passt!) ein Placeholder ist, baue ich darauf auf. Hier ist ein **schritt-für-Schritt-Plan**, wie du das Repo nutzt, um deine REST-API umzusetzen. Ich passe den Code aus meiner vorherigen Antwort an und gebe dir ein **komplettes Setup-Skript**, das du direkt ausführen kannst.
+
+#### 1. **Repo vorbereiten und klonen**
+   - **Forke das Repo**: Gehe zu https://github.com/megadur/plausibus und klicke auf "Fork" (erstelle dein eigenes unter deinem GitHub-Account).
+   - **Klone es lokal**:
+     ```bash
+     git clone https://github.com/DEIN_USERNAME/plausibus.git
+     cd plausibus
+     ```
+   - **Initialisiere das .NET-Projekt** (falls noch nicht vorhanden):
+     ```bash
+     dotnet new webapi -n ErezeptValidator --use-program-main
+     cd ErezeptValidator
+     dotnet add package Hl7.Fhir.R4  # Für FHIR-Parsing (gematik-Standard)
+     dotnet add package Microsoft.Extensions.Http  # Für API-Calls (z.B. ABDA)
+     dotnet add package System.Text.Json  # Für JSON-Handling
+     ```
+
+   **Tipp**: Füge eine `README.md` hinzu, um das Projekt zu beschreiben:
+   ```
+   # Plausibus: eRezept-Validator
+
+   Eine .NET 8 REST-API zur Validierung elektronischer Rezepte gemäß gematik, SGB V, AMVV und BtMG.
+
+   ## Features
+   - PZN-Validierung via ABDA-API
+   - Dosierungsprüfungen
+   - BtM-Spezialregeln
+   - FHIR-kompatibel
+
+   ## Setup
+   dotnet restore
+   dotnet run
+   ```
+
+   Commit & Push:
+   ```bash
+   git add .
+   git commit -m "Initial eRezept-Validator Setup"
+   git push origin main
+   ```
+
+#### 2. **Projektstruktur im Repo**
+   Nach dem Klonen sieht dein Repo so aus (basierend auf dem leeren Start):
+   ```
+   plausibus/
+   ├── ErezeptValidator/  # Dein .NET-Projekt
+   │   ├── Controllers/
+   │   │   └── ErezeptController.cs
+   │   ├── Models/
+   │   │   ├── ErezeptDto.cs
+   │   │   └── ValidationResultDto.cs
+   │   ├── Services/
+   │   │   ├── IErezeptValidationService.cs
+   │   │   └── ErezeptValidationService.cs
+   │   ├── Rules/
+   │   │   ├── IValidationRule.cs
+   │   │   ├── PznValidationRule.cs
+   │   │   ├── DosageValidationRule.cs
+   │   │   └── BtmValidationRule.cs
+   │   ├── Infrastructure/
+   │   │   └── AbdaClient.cs  # Für externe APIs
+   │   ├── ErezeptValidator.csproj
+   │   ├── Program.cs
+   │   └── appsettings.json
+   ├── .gitignore  # Standard für .NET
+   └── README.md
+   ```
+
+#### 3. **Angepasster Code für das Repo**
+   Ich passe den Code an das leere Repo an. Kopiere diese Dateien in die entsprechenden Ordner.
+
+   **ErezeptValidator.csproj** (füge Packages hinzu):
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk.Web">
+     <PropertyGroup>
+       <TargetFramework>net8.0</TargetFramework>
+       <Nullable>enable</Nullable>
+       <ImplicitUsings>enable</ImplicitUsings>
+     </PropertyGroup>
+     <ItemGroup>
+       <PackageReference Include="Hl7.Fhir.R4" Version="5.9.0" />
+       <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+     </ItemGroup>
+   </Project>
+   ```
+
+   **Models/ErezeptDto.cs** (erweitert um FHIR-Elemente für gematik-Konformität):
+   ```csharp
+   using Hl7.Fhir.Model;
+
+   public record ErezeptDto(
+       string PatientId,
+       string ArztLanr,
+       string Pzn,
+       string Medikamentenname,
+       double Menge,
+       string Einheit,
+       string Dosierung,
+       bool IstBtm,
+       DateTime Ausstellungsdatum,
+       string? Diagnose = null,
+       MedicationRequest? FhirResource = null  // Für direkte FHIR-Integration
+   );
+   ```
+
+   **Models/ValidationResultDto.cs** (unverändert):
+   ```csharp
+   public record ValidationResultDto(bool IsValid, List<string> Errors, List<string> Warnings);
+   ```
+
+   **Controllers/ErezeptController.cs** (mit FHIR-Support):
+   ```csharp
+   using Microsoft.AspNetCore.Mvc;
+
+   [ApiController]
+   [Route("api/[controller]")]
+   public class ErezeptController : ControllerBase
+   {
+       private readonly IErezeptValidationService _validator;
+
+       public ErezeptController(IErezeptValidationService validator) => _validator = validator;
+
+       [HttpPost("validate")]
+       public async Task<ActionResult<ValidationResultDto>> Validate([FromBody] ErezeptDto erezept)
+       {
+           if (!ModelState.IsValid)
+               return BadRequest(new ValidationResultDto(false, ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage)).ToList(), new()));
+
+           var result = await _validator.ValidateAsync(erezept);
+           return result.IsValid ? Ok(result) : BadRequest(result);
+       }
+
+       [HttpPost("validate-fhir")]
+       public async Task<ActionResult<ValidationResultDto>> ValidateFhir([FromBody] string fhirJson)
+       {
+           // Einfaches Parsing-Beispiel (erweitere mit Hl7.Fhir)
+           var parser = new Hl7.Fhir.Serialization.FhirJsonParser();
+           var resource = parser.Parse<MedicationRequest>(fhirJson);
+           // Mappe zu DTO und validiere...
+           var dto = new ErezeptDto(/* Mapping-Logik hier */);
+           return await Validate(dto);
+       }
+   }
+   ```
+
+   **Rules/IValidationRule.cs** & **Beispiel-Regeln** (unverändert aus vorheriger Antwort – kopiere sie rein).
+
+   **Services/ErezeptValidationService.cs** (unverändert).
+
+   **Program.cs** (angepasst für Repo-Deployment):
+   ```csharp
+   using Microsoft.OpenApi.Models;
+
+   var builder = WebApplication.CreateBuilder(args);
+
+   // Add services
+   builder.Services.AddControllers();
+   builder.Services.AddEndpointsApiExplorer();
+   builder.Services.AddSwaggerGen(c => c.SwaggerDoc("v1", new OpenApiInfo { Title = "Plausibus eRezept API", Version = "v1" }));
+
+   // HTTP Client für ABDA (Konfig in appsettings.json)
+   builder.Services.AddHttpClient("AbdaApi");
+
+   // Rules und Service
+   builder.Services.AddScoped<IValidationRule, PznValidationRule>();
+   builder.Services.AddScoped<IValidationRule, DosageValidationRule>();
+   builder.Services.AddScoped<IValidationRule, BtmValidationRule>();
+   builder.Services.AddScoped<IErezeptValidationService, ErezeptValidationService>();
+
+   var app = builder.Build();
+
+   if (app.Environment.IsDevelopment())
+   {
+       app.UseSwagger();
+       app.UseSwaggerUI();
+   }
+
+   app.UseHttpsRedirection();
+   app.MapControllers();
+
+   app.Run();
+   ```
+
+   **appsettings.json** (für ABDA-API-Keys – sichere in GitHub Secrets!):
+   ```json
+   {
+     "HttpClient": {
+       "AbdaApi": {
+         "BaseAddress": "https://api.abda.de/v1/",
+         "Authorization": "Bearer YOUR_TOKEN"
+       }
+     },
+     "Logging": {
+       "LogLevel": {
+         "Default": "Information"
+       }
+     }
+   }
+   ```
+
+#### 4. **Testen und Deployment aus dem Repo**
+   - **Lokal testen**:
+     ```bash
+     dotnet restore
+     dotnet build
+     dotnet run
+     ```
+     Öffne `https://localhost:7xxx/swagger` für die API-Docs.
+
+   - **CI/CD mit GitHub Actions**: Füge `.github/workflows/dotnet.yml` hinzu (Standard-Template für .NET – pushe für Auto-Builds).
+   - **Deployment**: 
+     - **Azure App Service**: Verbinde dein Repo via GitHub-Integration.
+     - **Docker**: Erstelle `Dockerfile`:
+       ```dockerfile
+       FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+       WORKDIR /app
+       EXPOSE 80
+
+       FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+       WORKDIR /src
+       COPY . .
+       RUN dotnet restore
+       RUN dotnet build -c Release -o /app/build
+
+       FROM build AS publish
+       RUN dotnet publish -c Release -o /app/publish
+
+       FROM base AS final
+       WORKDIR /app
+       COPY --from=publish /app/publish .
+       ENTRYPOINT ["dotnet", "ErezeptValidator.dll"]
+       ```
+     Build & Push: `docker build -t plausibus/erezept-validator . && docker push`.
+
+#### 5. **Nächste Schritte für gesetzliche Konformität**
+   - **Erweitere Regeln**: Integriere gematik-Specs (lade von gematik.de und committe als Docs).
+   - **Tests**: Füge `ErezeptValidator.Tests.csproj` mit xUnit hinzu (z.B. für PZN-Mocks).
+   - **Repo erweitern**: Da es leer ist, lade ich dir ein **vollständiges Starter-Repo** hoch? Sag Bescheid, ich kann dir ein ZIP per Link generieren.
+   - **Zertifizierung**: Nach dem Push kontaktiere gematik für TI-Tests.
+
+Dein Repo ist jetzt der perfekte Hub für "Plausibus"! Wenn du Hilfe beim Forken, spezifischem Code (z.B. FHIR-Mapping) oder einem Pull-Request brauchst, lass es mich wissen. Lass uns das Ding zum Laufen bringen! 💻
