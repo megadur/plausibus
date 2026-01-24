@@ -9,7 +9,18 @@
       "Bash(timeout /t 5 /nobreak)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker run:*)",
+      "Bash(timeout 15 bash:*)",
+      "Bash(docker exec erezept-postgres psql -U postgres -c \"CREATE USER erezept_user WITH PASSWORD ''Segelboot.1'';\")",
+      "Bash(docker exec:*)",
+      "Bash(dotnet ef migrations add:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd //c \"taskkill /F /PID 37712\")",
+      "Bash(dotnet ef:*)",
+      "Bash(dotnet --version:*)",
+      "Bash(dotnet tool update:*)"
     ]
   }
 }
