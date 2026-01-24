@@ -1,16 +1,25 @@
 using ErezeptValidator.Data;
+using ErezeptValidator.Data.Contexts;
+using ErezeptValidator.Services.DataSeeding;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+// Add PostgreSQL database context for TA1 reference data
+builder.Services.AddDbContext<Ta1DbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Ta1ReferenceDatabase")));
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() {
         Title = "E-Rezept Validator API",
-        Version = "v1",
-        Description = "API for validating E-Rezept prescriptions according to TA1 specifications"
+        Version = "v1.0.0-mvp",
+        Description = "API for validating E-Rezept prescriptions according to TA1 Version 039 specifications.\n\n" +
+                      "**MVP Scope**: Format validations (FMT-001 to FMT-010), General rules (GEN-001 to GEN-008), " +
+                      "Basic calculations (CALC-001 to CALC-003). Includes PZN validation via ABDATA and SOK code lookups."
     });
 
     // Enable XML comments for Swagger documentation
@@ -27,6 +36,9 @@ builder.Services.AddMemoryCache();
 
 // Register ABDATA repository
 builder.Services.AddScoped<IPznRepository, PznRepository>();
+
+// Register database initializer
+builder.Services.AddSingleton<DatabaseInitializer>();
 
 // Add logging
 builder.Services.AddLogging(logging =>
@@ -66,5 +78,12 @@ app.MapGet("/health", () => Results.Ok(new
 app.Logger.LogInformation("E-Rezept Validator API starting...");
 app.Logger.LogInformation("Swagger UI available at: https://localhost:{Port}",
     app.Configuration.GetValue<int>("ASPNETCORE_HTTPS_PORT", 7001));
+
+// Initialize Ta1 reference database
+using (var scope = app.Services.CreateScope())
+{
+    var initializer = scope.ServiceProvider.GetRequiredService<DatabaseInitializer>();
+    await initializer.InitializeAsync();
+}
 
 app.Run();
