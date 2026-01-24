@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-The project is a .NET 10 (likely .NET 8/9 compatible) REST API designed to validate electronic prescriptions (E-Rezept) against German healthcare regulations (TA1, BtMG, etc.).
+The project is a .NET 8 (LTS) REST API designed to validate electronic prescriptions (E-Rezept) against German healthcare regulations (TA1, BtMG, etc.).
 
 **Current Status:**
 - **Foundation Layer:** ✅ Implemented. Data access to ABDATA (SQL Server) and TA1 Reference Data (PostgreSQL) is established.
@@ -57,7 +57,7 @@ graph TD
 2.  **Caching Strategy:** Caching PZNs for 24 hours is appropriate given the daily update cycle of ABDATA. This will significantly reduce database load.
 3.  **Clean Separation of Concerns:** The distinction between the external reference database (ABDATA) and the internal application database (TA1 Ref) is well-handled.
 4.  **Documentation:** The project includes high-quality documentation (`ABDATA-Database-Integration-Plan.md`, `TA1-Validation-Rules-Technical-Specification.md`) which clearly defines the requirements.
-5.  **Modern Stack:** Use of .NET 6+ features (implied by syntax), generic host builder, and OpenAPI (Swagger).
+5.  **Modern Stack:** Use of .NET 8 (LTS) features, generic host builder, and OpenAPI (Swagger).
 
 ### 3.2 Weaknesses (Cons) & Risks
 

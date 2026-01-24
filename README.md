@@ -1,6 +1,6 @@
 # Plausibus: eRezept-Validator
 
-Eine .NET 10 REST-API zur Validierung elektronischer Rezepte gemäß gematik, SGB V, AMVV und BtMG.
+Eine .NET 8 (LTS) REST-API zur Validierung elektronischer Rezepte gemäß gematik, SGB V, AMVV und BtMG.
 
 ## Features
 - PZN-Validierung via ABDA-API
