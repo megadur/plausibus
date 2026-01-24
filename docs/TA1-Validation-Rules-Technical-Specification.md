@@ -32,7 +32,22 @@
 
 This technical specification defines the complete set of validation rules for E-Rezept billing data according to TA1 Version 039. These rules ensure compliance with German pharmaceutical billing regulations (§ 300 SGB V) and prevent rejection by health insurance companies (Krankenkassen).
 
-### 1.2 Scope
+### 1.2 Related Documentation
+
+This document is part of a comprehensive validation documentation suite:
+
+- **This Document (TA1-Validation-Rules)**: Validation business logic, rules, and algorithms (HOW to validate)
+- **[CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md)**: Complete code catalogs and reference data (WHAT to validate against)
+  - 172 SOK1 codes (standard special codes)
+  - 109 SOK2 codes (contract-specific special codes)
+  - Factor and price code definitions
+  - Cross-code validation rules
+- **[VALIDATION_EXAMPLES.md](./Abrechnung/VALIDATION_EXAMPLES.md)**: Practical validation scenarios (WHAT it looks like)
+  - 16 detailed examples with inputs and outputs
+  - Pass/fail scenarios
+  - Workflow diagrams
+
+### 1.3 Scope
 
 This specification covers:
 - E-Rezept dispensing data (Abgabedaten) validation
@@ -124,9 +139,9 @@ Formula:
 - VAT rate typically 19% in Germany
 ```
 
-### 2.3 Special Codes (Sonderkennzeichen) Location
+### 2.3 Special Codes (Sonderkennzeichen) Validation
 
-**Reference:** TA1 Section 4.14.1, 4.14.2
+**Reference:** TA1 Section 4.14.1, 4.14.2; [CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md) Sections 3-4
 
 #### Rule GEN-005: Special Code Transmission
 ```
@@ -138,6 +153,61 @@ Implementation:
 - For E-Rezept: transmitted in Abgabedaten structure
 - Each special code maximum once per prescription
 - Multiple fees indicated via Factor field (multiples of 1000.000000)
+```
+
+#### Rule GEN-006: SOK Validity Period Check
+```
+Severity: ERROR
+Condition: Special code must be valid at dispensing date
+Fields: Sonderkennzeichen, Abgabedatum (dispensing date)
+Reference: CODE_STRUCTURES.md Section 6.1
+Implementation:
+- Retrieve SOK from reference table (SOK1 or SOK2)
+- Check: dispensing_date >= SOK.valid_from
+- Check: SOK.valid_until IS NULL OR dispensing_date <= SOK.valid_until
+- Error if outside validity period
+Error Message:
+- "SOK {code} expired on {valid_until}. Dispensing date {dispensing_date} is not within validity period."
+- "SOK {code} not yet valid. Valid from {valid_from}, dispensing date {dispensing_date}."
+Example:
+  SOK 17717104 (VAXIGRIP 2022/2023) expired 2024-08-01
+  If dispensing date 2025-01-15 → ERROR
+```
+
+#### Rule GEN-007: E-Rezept SOK Compatibility
+```
+Severity: ERROR
+Condition: SOK must support E-Rezept if prescription is E-Rezept
+Fields: E-Rezept flag, Sonderkennzeichen
+Reference: CODE_STRUCTURES.md Section 5.4
+Implementation:
+- If prescription.is_e_rezept == true
+- Retrieve SOK.e_rezept from reference table
+- Check: SOK.e_rezept IN [1, 2] (1=compatible, 2=special handling)
+- Error if SOK.e_rezept == 0 (not compatible)
+Error Message:
+- "SOK {code} ({description}) is not compatible with E-Rezept. E-Rezept flag must be false."
+Example:
+  SOK 09999057 (partial quantity) has e_rezept=0
+  Cannot be used with E-Rezept → must use paper prescription
+```
+
+#### Rule GEN-008: VAT Rate Consistency
+```
+Severity: ERROR
+Condition: VAT rate must match SOK specification
+Fields: VAT rate code, Sonderkennzeichen
+Reference: CODE_STRUCTURES.md Section 5.3
+Implementation:
+- Retrieve SOK.vat_rate from reference table
+- Map VAT codes: 0=0% (tax-free), 1=7% (reduced), 2=19% (standard), -=N/A
+- Verify: prescription.vat_code == SOK.vat_rate
+- Error if mismatch
+Error Message:
+- "VAT rate mismatch for SOK {code} ({description}). Expected: {expected}%, Found: {actual}%"
+Example:
+  SOK 02567515 (Granulocytes) specifies vat_rate=0 (tax-free)
+  If prescription has vat_code=2 (19%) → ERROR
 ```
 
 ---
@@ -694,6 +764,32 @@ Example:
   - 500g (> 300g, ≤ 600g) → Factor "1500.000000", Price "9.00"
 ```
 
+#### Rule REZ-021: Additional Data Requirement Validation
+```
+Severity: ERROR
+Condition: SOK requires additional data per Zusatzdaten field specification
+Fields: Sonderkennzeichen, Additional data structure
+Reference: CODE_STRUCTURES.md Section 3.6 (SOK1 validation rules), Section 6.3
+Implementation:
+- Retrieve SOK.zusatzdaten from reference table
+- If zusatzdaten > 0: additional data is REQUIRED
+- Verify completeness based on zusatzdaten value:
+  - 0: No additional data required
+  - 1: Composition data required (e.g., ingredient list for compounded preparations)
+  - 2: Factor/price supplementary data required (e.g., container, substance details)
+  - 3: Opioid substitution dose data required (dose_mg, substance, administration type)
+  - 4: Fee/service data required (fee amount, justification)
+- Error if required data missing or incomplete
+Error Messages:
+- "SOK {code} requires additional data (Zusatzdaten={value}). Additional data missing or incomplete."
+- "SOK {code} requires composition data. Ingredient list missing."
+- "SOK {code} requires opioid dose data. Dose, substance, and administration type required."
+Examples:
+  SOK 09999011 (compounded preparation): zusatzdaten=1 → composition required
+  SOK 09999086 (Methadone): zusatzdaten=3 → dose information required
+  SOK 02567001 (BTM fee): zusatzdaten=4 → fee amount required
+```
+
 ---
 
 ## 7. Cannabis-Specific Validations
@@ -949,6 +1045,27 @@ Implementation:
 Format: ^[0-9]{9}$
 ```
 
+#### Rule SPC-008: Contract-Specific SOK Authorization
+```
+Severity: ERROR
+Condition: Pharmacy must be authorized to use contract-specific SOK codes
+Fields: Sonderkennzeichen, Pharmacy association
+Reference: CODE_STRUCTURES.md Section 6.2
+Implementation:
+- If SOK is in SOK2 range (contract-specific codes)
+- Retrieve SOK.assigned_to from reference table
+- Verify pharmacy association matches authorized organizations
+- Error if pharmacy not in authorized list
+Error Message:
+- "SOK {code} is a contract-specific code assigned to {assigned_to}. Pharmacy association {pharmacy_assoc} is not authorized to use this code."
+Example:
+  SOK 06460501 (AOK BW contract) assigned to "LAV Baden-Württemberg"
+  If pharmacy association is "LAV Bayern" → ERROR
+Note:
+- SOK1 codes (standard): available to all pharmacies
+- SOK2 codes (contract-specific): restricted to specific associations/contracts
+```
+
 ---
 
 ## 10. Price and Factor Calculations
@@ -1189,6 +1306,10 @@ FMT-010-E: "Price exceeds maximum decimal places. Max 9 pre-decimal + 2 post-dec
 GEN-001-E: "Timestamp must be in German time (CET/CEST). Found timezone: '{actual_timezone}'."
 GEN-003-E: "Bruttopreis must not have copayment deducted. Expected: pharmacy sales price per AMPreisV."
 GEN-004-W: "Statutory fee not properly VAT-adjusted. Expected net fee: {expected}, Found: {actual}."
+GEN-006-E: "SOK {code} expired on {valid_until}. Dispensing date {dispensing_date} is not within validity period."
+GEN-006-E: "SOK {code} not yet valid. Valid from {valid_from}, dispensing date {dispensing_date}."
+GEN-007-E: "SOK {code} ({description}) is not compatible with E-Rezept. E-Rezept flag must be false or use paper prescription."
+GEN-008-E: "VAT rate mismatch for SOK {code} ({description}). Expected: {expected}%, Found: {actual}%."
 ```
 
 #### BTM Errors (BTM-xxx)
@@ -1208,6 +1329,9 @@ REZ-004-E: "Counter sequence has gap. Expected: {expected}, Found: {actual}."
 REZ-005-E: "Factor must be expressed as Promilleanteil (per mille). Example: 1 package = 1000.000000."
 REZ-015-E: "Cannabis manufacturing timestamp must be dispensing date + 00:00. Expected: '{expected}', Found: '{actual}'."
 REZ-016-E: "Cannabis preparation counters must all be '1'. Found: Herstellung={h}, Einheit={e}."
+REZ-021-E: "SOK {code} requires additional data (Zusatzdaten={value}). Additional data missing or incomplete."
+REZ-021-E: "SOK {code} requires composition data. Ingredient list missing."
+REZ-021-E: "SOK {code} requires opioid dose data. Dose, substance, and administration type required."
 ```
 
 #### Cannabis Errors (CAN-xxx)
@@ -1234,6 +1358,7 @@ SPC-001-E: "For § 3 Abs. 4 prescriptions, Bruttopreis must be ≤ Zuzahlung. Fo
 SPC-004-E: "Artificial insemination patient contribution calculation incorrect. Expected 50% of min(AVK, Festbetrag). Expected: {expected}, Found: {actual}."
 SPC-006-E: "Deviation special code (02567024) has invalid factor code. Expected 3-digit code with values 1-9. Found: '{actual}'."
 SPC-007-E: "Institution identifier (IK) must be exactly 9 digits. Found: {actual_length} digits."
+SPC-008-E: "SOK {code} is a contract-specific code assigned to {assigned_to}. Pharmacy association {pharmacy_assoc} is not authorized to use this code."
 ```
 
 ### 12.4 Suggested Corrections
@@ -1279,6 +1404,9 @@ ValidationEngine
 ├── GeneralValidators (Phase 2)
 │   ├── TimezoneValidator (GEN-001)
 │   ├── GrossPriceValidator (GEN-003, GEN-004)
+│   ├── SokTemporalValidator (GEN-006)
+│   ├── SokErezeptCompatibilityValidator (GEN-007)
+│   ├── SokVatConsistencyValidator (GEN-008)
 │   └── ...
 ├── PrescriptionTypeDetector (Phase 3)
 │   ├── DetectBTM()
@@ -1288,8 +1416,9 @@ ValidationEngine
 ├── SpecializedValidators (Phase 4)
 │   ├── BtmValidator (BTM-xxx)
 │   ├── CannabisValidator (CAN-xxx)
-│   ├── CompoundingValidator (REZ-xxx)
+│   ├── CompoundingValidator (REZ-xxx, REZ-021)
 │   ├── EconomicSingleQuantityValidator (ESQ-xxx)
+│   ├── SokAuthorizationValidator (SPC-008)
 │   └── SpecialCaseValidator (SPC-xxx)
 ├── CalculationValidators (Phase 5)
 │   ├── PromilleanteilCalculator (CALC-001, CALC-002, CALC-003)
@@ -1305,25 +1434,34 @@ ValidationEngine
 
 The validator requires access to:
 
-1. **TA3 Code Tables**
+1. **Code Reference Data** (from [CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md))
+   - Factor codes (4 codes): Section 1
+   - Price codes (8 codes): Section 2
+   - SOK1 codes (172 codes): Section 3
+   - SOK2 codes (109 codes): Section 4
+   - Cross-code validation rules: Section 5
+
+2. **TA3 Code Tables**
    - Table 8.2.25: Faktorkennzeichen (Factor identifiers)
    - Table 8.2.26: Preiskennzeichen (Price identifiers)
    - Other relevant code tables
 
-2. **ABDA Database**
+3. **ABDA Database**
    - PZN validation and lookup
    - Drug authorization status
    - Current prices (for calculation validation)
 
-3. **Annex Tables**
+4. **Annex Tables**
    - Anhang 1: Federal special codes (Sonderkennzeichen)
    - Anhang 2: Insurance-pharmacy contracted special codes
    - Hilfstaxe Annexes 1, 2, 4, 5, 6, 7, 10
 
-4. **Lauer-Taxe API** (optional)
+5. **Lauer-Taxe API** (optional)
    - Real-time PZN validation
    - Current drug information
    - Pricing data
+
+**Note:** The CODE_STRUCTURES.md document serves as the primary reference for SOK codes and should be kept updated with official TA1 annexes.
 
 ### 13.3 Performance Considerations
 
@@ -1360,6 +1498,7 @@ The validator requires access to:
 - Use anonymized real E-Rezept data
 - Create synthetic test cases for edge conditions
 - Cover all special code combinations
+- Use examples from [VALIDATION_EXAMPLES.md](./Abrechnung/VALIDATION_EXAMPLES.md) as test scenarios
 
 ---
 
@@ -1405,9 +1544,18 @@ The validator requires access to:
 
 ### A.1 Special Codes by Category
 
+**NOTE:** This appendix contains frequently used special codes. For the **complete catalog** of:
+- **172 SOK1 codes** (standard special codes)
+- **109 SOK2 codes** (contract-specific special codes)
+
+See [CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md) Sections 3 and 4.
+
+For **practical validation examples** using these codes, see [VALIDATION_EXAMPLES.md](./Abrechnung/VALIDATION_EXAMPLES.md).
+
 | Category | Code | Description |
 |----------|------|-------------|
 | **BTM Fees** | 02567001 | BTM-Gebühr (Controlled substance fee) |
+| **T-Rezept Fee** | 06460688 | T-Rezept-Gebühr (Thalidomide prescription fee) |
 | **Cannabis** | 06461446 | Cannabis dried flowers |
 | | 06461423 | Cannabis extracts |
 | | 06460665 | Dronabinol preparation type 1 |
@@ -1418,44 +1566,60 @@ The validator requires access to:
 | | 09999011 | Alternative compounding |
 | **Economic Qty** | 02567053 | Individual dispensing (Auseinzelung) |
 | | 02566993 | Weekly blister (patient-specific partial quantities) |
-| **Substitution** | 02567107 | Substitution preparation type 1 |
-| | 02567113 | Substitution preparation type 2 |
-| | 02567136 | Substitution preparation type 3 |
-| | 09999086 | Substitution preparation type 4 |
-| | 06461506 | Substitution preparation type 5 |
-| | 06461512 | Substitution preparation type 6 |
+| **Opioid Subst.** | 09999086 | Methadone partial quantities (Anlage 4) |
+| | 02567107 | Levomethadone partial quantities (Anlage 5) |
+| | 02567113 | Buprenorphine/Subutex single doses |
+| | 02567136 | Buprenorphine/Naloxone single doses |
+| | 06461506 | Methadone preparations (Anlage 4) |
+| | 06461512 | Levomethadone preparations (Anlage 5) |
 | **Deviations** | 02567024 | Deviation from standard dispensing |
 | **Art. Insem.** | 09999643 | Artificial insemination marker |
 | **Surcharges** | 06460518 | General surcharge |
+| **Fees/Services** | 02567018 | Noctu fee (night service) |
+| | 06461110 | Botendienst (delivery service) |
+| **Vaccinations** | 17716926 | Flu vaccination service fee |
+| | 17716955 | Flu vaccination auxiliary services |
+| | 17717400 | COVID vaccination service |
 
 ### A.2 Factor Identifier Codes (TA3 8.2.25)
 
+**Reference:** For complete definitions and use cases, see [CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md) Section 1
+
 | Code | Description |
 |------|-------------|
-| 11 | Standard factor (Promilleanteil) |
-| 55 | Dose in milligrams (for substitution) |
-| 57 | Alternative dose specification |
+| 11 | Standard factor (Promilleanteil) - Share in promille |
+| 55 | Dose in milligrams (for opioid substitution take-home) |
+| 57 | Dose in milligrams (for opioid substitution supervised administration) |
+| 99 | Package share in promille (waste/disposal) |
 
 ### A.3 Price Identifier Codes (TA3 8.2.26)
+
+**Reference:** For complete definitions and tax status, see [CODE_STRUCTURES.md](./Abrechnung/CODE_STRUCTURES.md) Section 2
 
 | Code | Description |
 |------|-------------|
 | 11 | Pharmacy purchase price per AMPreisV |
+| 12 | Price agreed between pharmacy and pharmaceutical manufacturer |
 | 13 | Actual pharmacy purchase price |
-| 14 | Billing price per AMPreisV §§4,5 (with surcharges) |
-| 15 | Contracted billing price (pharmacy-insurance agreement) |
+| 14 | Billing price per AMPreisV §§4,5 (Hilfstaxe - with surcharges) |
+| 15 | Contracted billing price per § 129 Abs. 5 SGB V (pharmacy-insurance agreement) |
+| 16 | Contract prices per § 129a SGB V |
+| 17 | Billing price "Preis 2" per mg-price directory |
+| 21 | Discount contract billing price "Preis 1" per § 130a Abs. 8c SGB V |
 | 90 | Special price (e.g., 0.00 for markers) |
 
 ### A.4 Validation Rule Quick Lookup
 
 | Scenario | Key Rules to Check |
 |----------|-------------------|
-| **Standard E-Rezept** | GEN-001, GEN-003, FMT-001, FMT-003, FMT-008, FMT-010 |
-| **BTM Prescription** | BTM-001, BTM-002, BTM-003, BTM-004, GEN-004 |
-| **Cannabis Preparation** | CAN-001 through CAN-005, REZ-013 through REZ-020 |
-| **Weekly Blister** | ESQ-003, ESQ-004, REZ-007 through REZ-012 |
-| **Artificial Insemination** | SPC-003, SPC-004, SPC-005, CALC-003 |
-| **Compounding** | REZ-001 through REZ-020, CALC-001, CALC-004 |
+| **Standard E-Rezept** | GEN-001, GEN-003, GEN-006, GEN-007, GEN-008, FMT-001, FMT-003, FMT-008, FMT-010 |
+| **BTM Prescription** | BTM-001, BTM-002, BTM-003, BTM-004, GEN-004, GEN-006, GEN-008 |
+| **Cannabis Preparation** | CAN-001 through CAN-005, REZ-013 through REZ-021, GEN-006, GEN-008 |
+| **Weekly Blister** | ESQ-003, ESQ-004, REZ-007 through REZ-012, REZ-021, GEN-006 |
+| **Artificial Insemination** | SPC-003, SPC-004, SPC-005, CALC-003, GEN-006 |
+| **Compounding** | REZ-001 through REZ-021, CALC-001, CALC-004, GEN-006, GEN-008 |
+| **Contract-Specific SOK** | SPC-008, GEN-006, GEN-007, GEN-008 |
+| **SOK with E-Rezept** | GEN-007, GEN-006, GEN-008 |
 
 ---
 
