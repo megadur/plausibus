@@ -37,6 +37,9 @@ builder.Services.AddMemoryCache();
 // Register ABDATA repository
 builder.Services.AddScoped<IPznRepository, PznRepository>();
 
+// Register TA1 repository
+builder.Services.AddScoped<ITa1Repository, Ta1Repository>();
+
 // Register database initializer
 builder.Services.AddSingleton<DatabaseInitializer>();
 
