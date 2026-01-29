@@ -20,7 +20,12 @@
       "Bash(cmd //c \"taskkill /F /PID 37712\")",
       "Bash(dotnet ef:*)",
       "Bash(dotnet --version:*)",
-      "Bash(dotnet tool update:*)"
+      "Bash(dotnet tool update:*)",
+      "Bash(xargs:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git log:*)",
+      "Bash(wc:*)",
+      "Bash(dotnet test:*)"
     ]
   }
 }

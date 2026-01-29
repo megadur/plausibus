@@ -60,7 +60,7 @@ public class ValidationController : ControllerBase
 
             _logger.LogInformation("Validating E-Rezept bundle: {BundleId} with {EntryCount} entries", bundle.Id, bundle.Entry?.Count ?? 0);
 
-            var validationResults = new List<object>();
+            var validationResults = new List<Dictionary<string, object>>();
             var errors = new List<string>();
             var warnings = new List<string>();
 
@@ -72,9 +72,9 @@ public class ValidationController : ControllerBase
                     var result = await ValidateMedicationRequest(medRequest);
                     validationResults.Add(result);
 
-                    if (result.ContainsKey("errors") && ((JsonElement)result["errors"]).GetArrayLength() > 0)
+                    if (result.TryGetValue("errors", out var resultErrorsObj) && resultErrorsObj is List<string> resultErrors && resultErrors.Count > 0)
                     {
-                        errors.AddRange(((JsonElement)result["errors"]).EnumerateArray().Select(e => e.GetString()!));
+                        errors.AddRange(resultErrors);
                     }
                 }
             }
@@ -102,13 +102,13 @@ public class ValidationController : ControllerBase
         }
     }
 
-    private async Task<object> ValidateMedicationRequest(MedicationRequest medRequest)
+    private async Task<Dictionary<string, object>> ValidateMedicationRequest(MedicationRequest medRequest)
     {
         var errors = new List<string>();
         var warnings = new List<string>();
 
         // Extract PZN from medication.code.coding.code (assume first coding is PZN)
-        var pzn = medRequest.Medication?.CodeableConcept?.Coding?.FirstOrDefault()?.Code;
+        var pzn = (medRequest.Medication as CodeableConcept)?.Coding?.FirstOrDefault()?.Code;
         if (!string.IsNullOrEmpty(pzn))
         {
             // PZN format validation
@@ -150,13 +150,13 @@ public class ValidationController : ControllerBase
             }
         }
 
-        return new
+        return new Dictionary<string, object>
         {
-            medicationRequestId = medRequest.Id,
-            pzn,
-            sokCode,
-            errors,
-            warnings
+            ["medicationRequestId"] = medRequest.Id,
+            ["pzn"] = pzn,
+            ["sokCode"] = sokCode,
+            ["errors"] = errors,
+            ["warnings"] = warnings
         };
     }
 }

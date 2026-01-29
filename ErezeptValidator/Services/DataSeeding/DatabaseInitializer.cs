@@ -1,6 +1,7 @@
 using CsvHelper;
 using CsvHelper.Configuration;
 using ErezeptValidator.Data.Contexts;
+using ErezeptValidator.Models.Ta1Reference;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 
@@ -51,15 +52,15 @@ public class DatabaseInitializer
             {
                 _logger.LogInformation("Seeding price codes...");
                 context.PriceCodes.AddRange(
-                    new PriceCode { Code = "11", Content = "AEK", Description = "Apotheken-Einkaufspreis", VatRatePercentage = 0 },
-                    new PriceCode { Code = "12", Content = "AEK + Zuzahlung", Description = "AEK plus patient co-pay", VatRatePercentage = 0 },
-                    new PriceCode { Code = "13", Content = "AVK", Description = "Apotheken-Verkaufspreis", VatRatePercentage = 19 },
-                    new PriceCode { Code = "14", Content = "Festbetrag", Description = "Fixed fee", VatRatePercentage = 19 },
-                    new PriceCode { Code = "15", Content = "Zuzahlung", Description = "Patient co-pay", VatRatePercentage = 0 },
-                    new PriceCode { Code = "16", Content = "Zuzahlung + Festbetrag", Description = "Co-pay + fixed fee", VatRatePercentage = 19 },
-                    new PriceCode { Code = "17", Content = "Zuzahlung + AVK", Description = "Co-pay + selling price", VatRatePercentage = 19 },
-                    new PriceCode { Code = "21", Content = "Rezepturpreis", Description = "Compounding price", VatRatePercentage = 19 },
-                    new PriceCode { Code = "90", Content = "Sonstiges", Description = "Other", VatRatePercentage = 19 }
+                    new PriceCode { Code = "11", Content = "AEK", Description = "Apotheken-Einkaufspreis", TaxStatus = "excl. VAT" },
+                    new PriceCode { Code = "12", Content = "AEK + Zuzahlung", Description = "AEK plus patient co-pay", TaxStatus = "excl. VAT" },
+                    new PriceCode { Code = "13", Content = "AVK", Description = "Apotheken-Verkaufspreis", TaxStatus = "incl. VAT" },
+                    new PriceCode { Code = "14", Content = "Festbetrag", Description = "Fixed fee", TaxStatus = "incl. VAT" },
+                    new PriceCode { Code = "15", Content = "Zuzahlung", Description = "Patient co-pay", TaxStatus = "excl. VAT" },
+                    new PriceCode { Code = "16", Content = "Zuzahlung + Festbetrag", Description = "Co-pay + fixed fee", TaxStatus = "incl. VAT" },
+                    new PriceCode { Code = "17", Content = "Zuzahlung + AVK", Description = "Co-pay + selling price", TaxStatus = "incl. VAT" },
+                    new PriceCode { Code = "21", Content = "Rezepturpreis", Description = "Compounding price", TaxStatus = "incl. VAT" },
+                    new PriceCode { Code = "90", Content = "Sonstiges", Description = "Other", TaxStatus = "incl. VAT" }
                 );
                 await context.SaveChangesAsync();
             }
@@ -77,8 +78,9 @@ public class DatabaseInitializer
                     {
                         Code = r.SOK.ToString(),
                         Description = r.Beschreibung.ToString(),
-                        VatRatePercentage = int.Parse(r.USt.ToString()),
-                        ERezept = int.Parse(r["E-Rezept"].ToString())
+                        CodeType = "SOK1",
+                        VatRate = short.Parse(r.USt.ToString()),
+                        ERezept = short.Parse(r["E-Rezept"].ToString())
                     }).ToList();
                     context.SpecialCodes.AddRange(specialCodes);
                     await context.SaveChangesAsync();
