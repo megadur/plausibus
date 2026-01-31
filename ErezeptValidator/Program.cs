@@ -1,5 +1,6 @@
 using ErezeptValidator.Data;
 using ErezeptValidator.Data.Contexts;
+using ErezeptValidator.Services.CodeLookup;
 using ErezeptValidator.Services.DataSeeding;
 using Microsoft.EntityFrameworkCore;
 
@@ -40,8 +41,12 @@ builder.Services.AddScoped<IPznRepository, PznRepository>();
 // Register TA1 repository
 builder.Services.AddScoped<ITa1Repository, Ta1Repository>();
 
-// Register database initializer
+// Register code lookup service with caching
+builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
+
+// Register database initializer and data loaders
 builder.Services.AddSingleton<DatabaseInitializer>();
+builder.Services.AddScoped<SokCodeLoader>();
 
 // Add logging
 builder.Services.AddLogging(logging =>

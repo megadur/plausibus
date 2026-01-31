@@ -1,9 +1,6 @@
-using CsvHelper;
-using CsvHelper.Configuration;
 using ErezeptValidator.Data.Contexts;
 using ErezeptValidator.Models.Ta1Reference;
 using Microsoft.EntityFrameworkCore;
-using System.Globalization;
 
 namespace ErezeptValidator.Services.DataSeeding;
 
@@ -68,28 +65,15 @@ public class DatabaseInitializer
             // Seed special codes from CSV if empty
             if (!await context.SpecialCodes.AnyAsync())
             {
-                _logger.LogInformation("Seeding special codes from CSV...");
-                var csvPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "docs", "Abrechnung", "TA1_Anhang_1_SOK1_20250826_Sonderkennzeichen.xlsx - SOK.csv");
-                if (File.Exists(csvPath))
-                {
-                    using var reader = new StreamReader(csvPath);
-                    using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-                    var specialCodes = csv.GetRecords<dynamic>().Select(r => new SpecialCode
-                    {
-                        Code = r.SOK.ToString(),
-                        Description = r.Beschreibung.ToString(),
-                        CodeType = "SOK1",
-                        VatRate = short.Parse(r.USt.ToString()),
-                        ERezept = short.Parse(r["E-Rezept"].ToString())
-                    }).ToList();
-                    context.SpecialCodes.AddRange(specialCodes);
-                    await context.SaveChangesAsync();
-                    _logger.LogInformation("Seeded {Count} special codes from CSV", specialCodes.Count);
-                }
-                else
-                {
-                    _logger.LogWarning("SOK CSV file not found at {Path}", csvPath);
-                }
+                _logger.LogInformation("Loading special codes from CSV files...");
+                var sokLoader = scope.ServiceProvider.GetRequiredService<SokCodeLoader>();
+                var (sok1Count, sok2Count) = await sokLoader.LoadAllCodesAsync();
+                _logger.LogInformation("Loaded {Sok1Count} SOK1 codes and {Sok2Count} SOK2 codes", sok1Count, sok2Count);
+            }
+            else
+            {
+                var totalCodes = await context.SpecialCodes.CountAsync();
+                _logger.LogInformation("Special codes already exist in database ({Count} total)", totalCodes);
             }
 
             _logger.LogInformation("Ta1 reference data initialization complete.");
