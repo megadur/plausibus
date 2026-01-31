@@ -55,24 +55,24 @@ public partial class PznRepository : IPznRepository
 
             var sql = @"
                 SELECT
-                    PZN as Pzn,
-                    Name,
-                    Langname_ungekuerzt as LangnameUngekuerzt,
-                    BTM as Btm,
-                    Cannabis,
-                    Apo_Ek as ApoEk,
-                    Apo_Vk as ApoVk,
-                    ApU,
-                    ApU_78_3a_1_AMG as ApU_78_3a_1_Amg,
-                    Festbetrag,
-                    Verkehrsstatus,
-                    Rezeptpflicht,
-                    MwSt,
-                    Lifestyle,
-                    TFG as Tfg,
-                    Apopflicht
+                    [01] as Pzn,
+                    [60] as Name,
+                    [67] as LangnameUngekuerzt,
+                    [08] as Btm,
+                    0 as Cannabis,
+                    [02] as ApoEk,
+                    [04] as ApoVk,
+                    [18] as ApU,
+                    [C0] as ApU_78_3a_1_Amg,
+                    [97] as Festbetrag,
+                    [52] as Verkehrsstatus,
+                    [54] as Rezeptpflicht,
+                    [37] as MwSt,
+                    [81] as Lifestyle,
+                    [50] as Tfg,
+                    [03] as Apopflicht
                 FROM PAC_APO
-                WHERE PZN = @Pzn";
+                WHERE [01] = @Pzn";
 
             var article = await connection.QuerySingleOrDefaultAsync<PacApoArticle>(sql, new { Pzn = pzn });
 
@@ -131,24 +131,24 @@ public partial class PznRepository : IPznRepository
 
                 var sql = @"
                     SELECT
-                        PZN as Pzn,
-                        Name,
-                        Langname_ungekuerzt as LangnameUngekuerzt,
-                        BTM as Btm,
-                        Cannabis,
-                        Apo_Ek as ApoEk,
-                        Apo_Vk as ApoVk,
-                        ApU,
-                        ApU_78_3a_1_AMG as ApU_78_3a_1_Amg,
-                        Festbetrag,
-                        Verkehrsstatus,
-                        Rezeptpflicht,
-                        MwSt,
-                        Lifestyle,
-                        TFG as Tfg,
-                        Apopflicht
+                        [01] as Pzn,
+                        [60] as Name,
+                        [67] as LangnameUngekuerzt,
+                        [08] as Btm,
+                        0 as Cannabis,
+                        [02] as ApoEk,
+                        [04] as ApoVk,
+                        [18] as ApU,
+                        [C0] as ApU_78_3a_1_Amg,
+                        [97] as Festbetrag,
+                        [52] as Verkehrsstatus,
+                        [54] as Rezeptpflicht,
+                        [37] as MwSt,
+                        [81] as Lifestyle,
+                        [50] as Tfg,
+                        [03] as Apopflicht
                     FROM PAC_APO
-                    WHERE PZN IN @Pzns";
+                    WHERE [01] IN @Pzns";
 
                 var articles = await connection.QueryAsync<PacApoArticle>(sql, new { Pzns = uncachedPzns });
 

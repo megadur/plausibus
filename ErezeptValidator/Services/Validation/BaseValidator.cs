@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ErezeptValidator.Models.Validation;
 
 namespace ErezeptValidator.Services.Validation;
 
@@ -17,53 +18,42 @@ public abstract class BaseValidator : IValidator
     /// <summary>
     /// Name of this validator for logging
     /// </summary>
-    public abstract string ValidatorName { get; }
-
-    /// <summary>
-    /// Execution order (lower runs first)
-    /// </summary>
-    public abstract int Order { get; }
+    public abstract string Name { get; }
 
     /// <summary>
     /// Validate the prescription
     /// </summary>
-    public async Task ValidateAsync(ValidationContext context)
+    public async Task<ValidationResult> ValidateAsync(ValidationContext context)
     {
-        Logger.LogDebug("Starting {ValidatorName} validation", ValidatorName);
+        var result = ValidationResult.Success(Name);
 
-        var errorCountBefore = context.Errors.Count;
-        var warningCountBefore = context.Warnings.Count;
+        Logger.LogDebug("Starting {ValidatorName} validation", Name);
 
         try
         {
-            await ExecuteValidationAsync(context);
+            await ExecuteValidationAsync(context, result);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error in {ValidatorName} validation", ValidatorName);
-            context.AddError(
-                code: "INTERNAL-ERROR",
-                message: $"Internal validation error in {ValidatorName}: {ex.Message}",
-                suggestion: "Contact support if this error persists"
-            );
+            Logger.LogError(ex, "Error in {ValidatorName} validation", Name);
+            result.AddError("INTERNAL-ERROR", $"Internal validation error in {Name}: {ex.Message}");
         }
 
-        var errorsAdded = context.Errors.Count - errorCountBefore;
-        var warningsAdded = context.Warnings.Count - warningCountBefore;
-
-        if (errorsAdded > 0 || warningsAdded > 0)
+        if (result.ErrorCount > 0 || result.WarningCount > 0)
         {
             Logger.LogInformation("{ValidatorName} found {ErrorCount} errors and {WarningCount} warnings",
-                ValidatorName, errorsAdded, warningsAdded);
+                Name, result.ErrorCount, result.WarningCount);
         }
         else
         {
-            Logger.LogDebug("{ValidatorName} validation passed", ValidatorName);
+            Logger.LogDebug("{ValidatorName} validation passed", Name);
         }
+
+        return result;
     }
 
     /// <summary>
     /// Execute the actual validation logic (implemented by derived classes)
     /// </summary>
-    protected abstract Task ExecuteValidationAsync(ValidationContext context);
+    protected abstract Task ExecuteValidationAsync(ValidationContext context, ValidationResult result);
 }

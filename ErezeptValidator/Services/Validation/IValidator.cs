@@ -3,23 +3,17 @@ using ErezeptValidator.Models.Validation;
 namespace ErezeptValidator.Services.Validation;
 
 /// <summary>
-/// Base interface for all validators in the validation pipeline
+/// Interface for all validators
 /// </summary>
 public interface IValidator
 {
     /// <summary>
-    /// Validate the prescription and add errors/warnings to the context
+    /// Name of the validator
     /// </summary>
-    /// <param name="context">Validation context containing prescription data and results</param>
-    Task ValidateAsync(ValidationContext context);
+    string Name { get; }
 
     /// <summary>
-    /// Name of this validator for logging and debugging
+    /// Validate the context and return results
     /// </summary>
-    string ValidatorName { get; }
-
-    /// <summary>
-    /// Execution order (lower numbers run first)
-    /// </summary>
-    int Order { get; }
+    Task<ValidationResult> ValidateAsync(ValidationContext context);
 }

@@ -46,13 +46,24 @@ builder.Services.AddScoped<ITa1Repository, Ta1Repository>();
 // Register code lookup service with caching
 builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
 
+// TODO: Update old validators to match new interface
 // Register validators (execution order: Format -> General -> Calculation)
-builder.Services.AddScoped<FormatValidator>();
-builder.Services.AddScoped<GeneralRuleValidator>();
-builder.Services.AddScoped<CalculationValidator>();
+// builder.Services.AddScoped<FormatValidator>();
+// builder.Services.AddScoped<GeneralRuleValidator>();
+// builder.Services.AddScoped<CalculationValidator>();
 
 // Register validation service (orchestrator)
-builder.Services.AddScoped<IValidationService, ValidationService>();
+// builder.Services.AddScoped<IValidationService, ValidationService>();
+
+// Register new validation pipeline validators
+builder.Services.AddScoped<IValidator, PznFormatValidator>();
+builder.Services.AddScoped<IValidator, PznExistsValidator>();
+builder.Services.AddScoped<IValidator, BtmDetectionValidator>();
+builder.Services.AddScoped<IValidator, FhirFormatValidator>();
+builder.Services.AddScoped<IValidator, FhirAbgabedatenValidator>();
+
+// Register validation pipeline
+builder.Services.AddScoped<ValidationPipeline>();
 
 // Register database initializer and data loaders
 builder.Services.AddSingleton<DatabaseInitializer>();
