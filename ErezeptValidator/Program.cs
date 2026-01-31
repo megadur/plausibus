@@ -2,6 +2,8 @@ using ErezeptValidator.Data;
 using ErezeptValidator.Data.Contexts;
 using ErezeptValidator.Services.CodeLookup;
 using ErezeptValidator.Services.DataSeeding;
+using ErezeptValidator.Services.Validation;
+using ErezeptValidator.Services.Validation.Validators;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +45,14 @@ builder.Services.AddScoped<ITa1Repository, Ta1Repository>();
 
 // Register code lookup service with caching
 builder.Services.AddScoped<ICodeLookupService, CodeLookupService>();
+
+// Register validators (execution order: Format -> General -> Calculation)
+builder.Services.AddScoped<FormatValidator>();
+builder.Services.AddScoped<GeneralRuleValidator>();
+builder.Services.AddScoped<CalculationValidator>();
+
+// Register validation service (orchestrator)
+builder.Services.AddScoped<IValidationService, ValidationService>();
 
 // Register database initializer and data loaders
 builder.Services.AddSingleton<DatabaseInitializer>();
