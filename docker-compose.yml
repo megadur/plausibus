@@ -1,29 +1,9 @@
 # E-Rezept Validator - Docker Compose Configuration
-# Runs API + PostgreSQL in Docker Desktop
+# Uses existing PostgreSQL container (erezept-postgres)
 
 version: '3.8'
 
 services:
-  # PostgreSQL database for TA1 reference data
-  postgres:
-    image: postgres:16-alpine
-    container_name: erezept-postgres
-    environment:
-      POSTGRES_DB: erezept_validator
-      POSTGRES_USER: erezept_user
-      POSTGRES_PASSWORD: Segelboot.1
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erezept_user -d erezept_validator"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - erezept-network
-
   # E-Rezept Validator API
   api:
     build:
@@ -31,8 +11,9 @@ services:
       dockerfile: Dockerfile
     container_name: erezept-validator-api
     environment:
-      # PostgreSQL connection
-      ConnectionStrings__Ta1ReferenceDatabase: "Host=postgres;Port=5432;Database=erezept_validator;Username=erezept_user;Password=Segelboot.1;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;Connection Lifetime=300;Timeout=30"
+      # PostgreSQL connection to EXISTING container
+      # Using host.docker.internal to connect to PostgreSQL on host
+      ConnectionStrings__Ta1ReferenceDatabase: "Host=host.docker.internal;Port=5432;Database=erezept_validator;Username=erezept_user;Password=Segelboot.1;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;Connection Lifetime=300;Timeout=30"
 
       # ABDATA connection (update with your SQL Server details)
       ConnectionStrings__AbdataDatabase: "Data Source=host.docker.internal;Initial Catalog=ABDATA1225A;User ID=sa;Password=YourPassword;TrustServerCertificate=true;Connection Timeout=30"
@@ -47,22 +28,12 @@ services:
       AbdataSettings__CacheExpirationHours: 24
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - erezept-network
-
-volumes:
-  postgres_data:
-    driver: local
-
-networks:
-  erezept-network:
-    driver: bridge
+    extra_hosts:
+      # Allows container to reach host services (PostgreSQL, ABDATA)
+      - "host.docker.internal:host-gateway"

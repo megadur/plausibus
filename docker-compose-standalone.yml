@@ -1,0 +1,70 @@
+# E-Rezept Validator - Standalone Docker Compose
+# Creates new PostgreSQL container + API (use if you want fresh database)
+
+version: '3.8'
+
+services:
+  # PostgreSQL database for TA1 reference data
+  postgres:
+    image: postgres:16-alpine
+    container_name: erezept-postgres-standalone
+    environment:
+      POSTGRES_DB: erezept_validator
+      POSTGRES_USER: erezept_user
+      POSTGRES_PASSWORD: Segelboot.1
+    ports:
+      - "5433:5432"  # Different port to avoid conflict
+    volumes:
+      - postgres_standalone_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erezept_user -d erezept_validator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - erezept-network
+
+  # E-Rezept Validator API
+  api:
+    build:
+      context: ./ErezeptValidator
+      dockerfile: Dockerfile
+    container_name: erezept-validator-api-standalone
+    environment:
+      # PostgreSQL connection
+      ConnectionStrings__Ta1ReferenceDatabase: "Host=postgres;Port=5432;Database=erezept_validator;Username=erezept_user;Password=Segelboot.1;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;Connection Lifetime=300;Timeout=30"
+
+      # ABDATA connection
+      ConnectionStrings__AbdataDatabase: "Data Source=host.docker.internal;Initial Catalog=ABDATA1225A;User ID=sa;Password=YourPassword;TrustServerCertificate=true;Connection Timeout=30"
+
+      # Application settings
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+
+      # ABDATA settings
+      AbdataSettings__DatabaseName: ABDATA1225A
+      AbdataSettings__Version: December 2025 A
+      AbdataSettings__CacheExpirationHours: 24
+    ports:
+      - "8081:8080"  # Different port to avoid conflict
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - erezept-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_standalone_data:
+    driver: local
+
+networks:
+  erezept-network:
+    driver: bridge

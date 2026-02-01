@@ -12,11 +12,20 @@ This guide explains how to run the E-Rezept Validator in Docker Desktop.
 
 ---
 
-## Quick Start
+## Docker Compose Files
+
+Two configurations are available:
+
+1. **`docker-compose.yml`** - Uses your EXISTING PostgreSQL container (recommended)
+2. **`docker-compose-standalone.yml`** - Creates NEW PostgreSQL container (ports 5433/8081)
+
+---
+
+## Quick Start (Using Existing PostgreSQL)
 
 ### 1. Update ABDATA Connection String
 
-Edit `docker-compose.yml` and update the ABDATA connection string:
+Edit `docker-compose.yml` and update the ABDATA connection string (line ~14):
 
 ```yaml
 ConnectionStrings__AbdataDatabase: "Data Source=YOUR_SQL_SERVER;Initial Catalog=ABDATA1225A;User ID=YOUR_USER;Password=YOUR_PASSWORD;TrustServerCertificate=true"
@@ -27,30 +36,41 @@ ConnectionStrings__AbdataDatabase: "Data Source=YOUR_SQL_SERVER;Initial Catalog=
 ConnectionStrings__AbdataDatabase: "Data Source=host.docker.internal;Initial Catalog=ABDATA1225A;..."
 ```
 
-### 2. Build and Start Containers
+### 2. Ensure Your PostgreSQL Container is Running
+
+```bash
+# Check if erezept-postgres is running
+docker ps | grep erezept-postgres
+
+# If not running, start it
+docker start erezept-postgres
+```
+
+### 3. Build and Start API Container
 
 Open terminal in the project root directory:
 
 ```bash
-# Build and start all services
+# Build and start API (uses existing PostgreSQL)
 docker-compose up --build
 
 # Or run in detached mode (background)
 docker-compose up -d --build
 ```
 
-### 3. Verify Services are Running
+**Note:** Only the API container will be created. It connects to your existing `erezept-postgres` container via `host.docker.internal:5432`.
+
+### 4. Verify Services are Running
 
 **Check container status:**
 ```bash
-docker-compose ps
+docker ps | grep -E "erezept-postgres|erezept-validator-api"
 ```
 
 Expected output:
 ```
-NAME                      STATUS    PORTS
-erezept-postgres          Up        0.0.0.0:5432->5432/tcp
 erezept-validator-api     Up        0.0.0.0:8080->8080/tcp
+erezept-postgres          Up        0.0.0.0:5432->5432/tcp
 ```
 
 **Check API health:**
@@ -68,7 +88,7 @@ Expected response:
 }
 ```
 
-### 4. Access the API
+### 5. Access the API
 
 - **Swagger UI:** http://localhost:8080
 - **Health Check:** http://localhost:8080/health
