@@ -1,38 +1,21 @@
 using ErezeptValidator.Data;
 using ErezeptValidator.Models.Validation;
+using ErezeptValidator.Models.ValueObjects;
 using ErezeptValidator.Services.CodeLookup;
 using ErezeptValidator.Services.Validation.Helpers;
-using Hl7.Fhir.Model;
 
 namespace ErezeptValidator.Services.Validation.Validators;
 
 /// <summary>
 /// Validator for calculation rules (CALC-001 to CALC-003)
 /// Validates factors, prices, and special calculations for Abgabedaten bundles
+/// Uses value objects for type safety and business logic encapsulation
 /// </summary>
 public class CalculationValidator : IValidator
 {
     private readonly ICodeLookupService _codeLookupService;
     private readonly IPznRepository _pznRepository;
     private readonly ILogger<CalculationValidator> _logger;
-
-    // Special codes without quantity reference (CALC-002)
-    private static readonly HashSet<string> SpecialCodesWithoutQuantityReference = new()
-    {
-        "1.1.1", "1.1.2", "1.2.1", "1.2.2",
-        "1.3.1", "1.3.2",
-        "1.6.5",
-        "1.10.2", "1.10.3"
-    };
-
-    // Artificial insemination marker code (CALC-003)
-    private const string ArtificialInseminationCode = "09999643";
-    private const decimal ArtificialInseminationFactor = 1000.000000m;
-    private const decimal ArtificialInseminationPrice = 0.00m;
-    private const string ArtificialInseminationPriceId = "90";
-
-    // Tolerance for decimal comparisons (accounts for floating point precision)
-    private const decimal DecimalTolerance = 0.000001m;
 
     public string Name => "Calculation Validator";
 
@@ -62,7 +45,7 @@ public class CalculationValidator : IValidator
         // Validate each Invoice line item
         foreach (var invoice in context.Invoices)
         {
-            foreach (var lineItem in invoice.LineItem ?? Enumerable.Empty<Invoice.LineItemComponent>())
+            foreach (var lineItem in invoice.LineItem ?? Enumerable.Empty<Hl7.Fhir.Model.Invoice.LineItemComponent>())
             {
                 var lineNumber = lineItem.Sequence ?? 0;
                 await ValidateLineItemCalculationsAsync(lineItem, lineNumber, result);
@@ -76,30 +59,37 @@ public class CalculationValidator : IValidator
     /// Validate calculations for a single Invoice line item
     /// </summary>
     private async System.Threading.Tasks.Task ValidateLineItemCalculationsAsync(
-        Invoice.LineItemComponent lineItem,
+        Hl7.Fhir.Model.Invoice.LineItemComponent lineItem,
         int lineNumber,
         ValidationResult result)
     {
-        var sok = FhirDataExtractor.ExtractSokCode(lineItem);
-        var (factorCode, factorValue) = FhirDataExtractor.ExtractFactor(lineItem);
-        var (priceCode, priceAmount) = FhirDataExtractor.ExtractPrice(lineItem);
+        // Extract as value objects
+        var sokString = FhirDataExtractor.ExtractSokCode(lineItem);
+        var (_, factorValue) = FhirDataExtractor.ExtractFactor(lineItem);
+        var (priceCodeString, priceAmount) = FhirDataExtractor.ExtractPrice(lineItem);
+
+        // Try to create value objects
+        SokCode.TryCreate(sokString, out var sok);
+        PromilleFactor.TryParse(factorValue, out var actualFactor);
+        Money.TryParse(priceAmount, out var actualPrice);
+        PriceIdentifier.TryCreate(priceCodeString, out var priceId);
 
         // CALC-003: Artificial insemination special code validation
-        if (sok == ArtificialInseminationCode)
+        if (sok.IsArtificialInsemination)
         {
-            ValidateArtificialInseminationCode(factorValue, priceAmount, priceCode, lineNumber, result);
+            ValidateArtificialInseminationCode(actualFactor, actualPrice, priceId, lineNumber, result);
             return; // Skip other validations for this special case
         }
 
         // CALC-002: Special codes without quantity reference
-        if (!string.IsNullOrEmpty(sok) && SpecialCodesWithoutQuantityReference.Contains(sok))
+        if (sok.HasNoQuantityReference)
         {
-            ValidateSpecialCodeFactor(sok, factorValue, lineNumber, result);
+            ValidateSpecialCodeFactor(sok, actualFactor, lineNumber, result);
             return; // Skip CALC-001 for these special codes
         }
 
         // CALC-001: Standard Promilleanteil formula validation
-        await ValidateStandardFactorCalculationAsync(lineItem, factorValue, lineNumber, result);
+        await ValidateStandardFactorCalculationAsync(lineItem, actualFactor, lineNumber, result);
     }
 
     /// <summary>
@@ -107,33 +97,32 @@ public class CalculationValidator : IValidator
     /// Formula: Factor = (Dispensed_Quantity / Package_Quantity) × 1000
     /// </summary>
     private async System.Threading.Tasks.Task ValidateStandardFactorCalculationAsync(
-        Invoice.LineItemComponent lineItem,
-        decimal? actualFactor,
+        Hl7.Fhir.Model.Invoice.LineItemComponent lineItem,
+        PromilleFactor actualFactor,
         int lineNumber,
         ValidationResult result)
     {
-        if (actualFactor == null)
+        if (actualFactor.Equals(default(PromilleFactor)))
         {
             // No factor provided - this is acceptable for some line items
             return;
         }
 
-        // Extract quantities
+        // Extract quantities as value objects
         var dispensedQty = FhirDataExtractor.ExtractDispensedQuantity(lineItem);
         var packageQty = FhirDataExtractor.ExtractPackageQuantity(lineItem);
 
-        // If we can't determine quantities, we can't validate the calculation
-        // This is a warning, not an error, as the data might be structured differently
-        if (dispensedQty == null || packageQty == null)
+        if (!Quantity.TryParse(dispensedQty, out var dispensed) ||
+            !Quantity.TryParse(packageQty, out var package))
         {
             _logger.LogDebug(
-                "Cannot validate factor calculation for line {LineNumber} - missing quantity information (dispensed: {Dispensed}, package: {Package})",
-                lineNumber, dispensedQty, packageQty);
+                "Cannot validate factor calculation for line {LineNumber} - missing quantity information",
+                lineNumber);
             return;
         }
 
         // Validate package quantity is not zero
-        if (packageQty == 0)
+        if (package.IsZero)
         {
             result.AddError(
                 "CALC-001-E",
@@ -142,144 +131,107 @@ public class CalculationValidator : IValidator
             return;
         }
 
-        // Calculate expected factor: (dispensed / package) * 1000
-        var expectedFactor = (dispensedQty.Value / packageQty.Value) * 1000m;
+        // Calculate expected factor using value objects
+        var expectedFactor = PromilleFactor.FromRatio(dispensed, package);
 
-        // Normalize both values for comparison (handle different decimal representations)
-        var normalizedExpected = NormalizeFactor(expectedFactor);
-        var normalizedActual = NormalizeFactor(actualFactor.Value);
-
-        if (!AreFactorsEqual(normalizedExpected, normalizedActual))
+        // Compare with tolerance
+        if (!actualFactor.EqualsWithinTolerance(expectedFactor))
         {
             result.AddError(
                 "CALC-001-E",
                 $"Factor (Promilleanteil) calculation incorrect for line item {lineNumber}. " +
-                $"Expected: {FormatFactor(normalizedExpected)}, Found: {FormatFactor(normalizedActual)}. " +
-                $"Calculation: ({dispensedQty} / {packageQty}) × 1000 = {FormatFactor(normalizedExpected)}",
+                $"Expected: {expectedFactor}, Found: {actualFactor}. " +
+                $"Calculation: ({dispensed} / {package}) × 1000 = {expectedFactor}",
                 $"LineItem[{lineNumber}].Factor");
         }
     }
 
     /// <summary>
-    /// CALC-002: Special codes without quantity reference must have factor 1.000000
+    /// CALC-002: Special codes without quantity reference must have factor 1.0
     /// </summary>
     private void ValidateSpecialCodeFactor(
-        string sokCode,
-        decimal? actualFactor,
+        SokCode sokCode,
+        PromilleFactor actualFactor,
         int lineNumber,
         ValidationResult result)
     {
-        if (actualFactor == null)
+        if (actualFactor.Equals(default(PromilleFactor)))
         {
             result.AddError(
                 "CALC-002-E",
-                $"Special code {sokCode} without quantity reference requires a factor. Expected: 1.000000, Found: (none)",
+                $"Special code {sokCode} without quantity reference requires a factor. " +
+                $"Expected: {PromilleFactor.One}, Found: (none)",
                 $"LineItem[{lineNumber}].Factor");
             return;
         }
 
-        var expectedFactor = 1.000000m;
-        var normalizedActual = NormalizeFactor(actualFactor.Value);
+        var expectedFactor = PromilleFactor.One;
 
-        if (!AreFactorsEqual(expectedFactor, normalizedActual))
+        if (!actualFactor.EqualsWithinTolerance(expectedFactor))
         {
             result.AddError(
                 "CALC-002-E",
-                $"Special code {sokCode} without quantity reference must have factor 1.000000. " +
-                $"Expected: 1.000000, Found: {FormatFactor(normalizedActual)}",
+                $"Special code {sokCode} without quantity reference must have factor {expectedFactor}. " +
+                $"Expected: {expectedFactor}, Found: {actualFactor}",
                 $"LineItem[{lineNumber}].Factor");
         }
     }
 
     /// <summary>
     /// CALC-003: Artificial insemination special code (09999643) validation
-    /// Must have: Factor = 1000.000000, Price = 0.00, Price Identifier = "90"
+    /// Must have: Factor = 1000.0, Price = 0.00 EUR, Price Identifier = "90"
     /// </summary>
     private void ValidateArtificialInseminationCode(
-        decimal? actualFactor,
-        decimal? actualPrice,
-        string? actualPriceId,
+        PromilleFactor actualFactor,
+        Money actualPrice,
+        PriceIdentifier actualPriceId,
         int lineNumber,
         ValidationResult result)
     {
         var errors = new List<string>();
 
-        // Validate Factor = 1000.000000
-        if (actualFactor == null)
+        // Expected values as value objects
+        var expectedFactor = PromilleFactor.ArtificialInsemination;
+        var expectedPrice = Money.Zero;
+        var expectedPriceId = PriceIdentifier.ArtificialInsemination;
+
+        // Validate Factor = 1000.0
+        if (actualFactor.Equals(default(PromilleFactor)))
         {
-            errors.Add($"Factor must be {ArtificialInseminationFactor} (found: none)");
+            errors.Add($"Factor must be {expectedFactor} (found: none)");
         }
-        else if (!AreFactorsEqual(ArtificialInseminationFactor, actualFactor.Value))
+        else if (!actualFactor.EqualsWithinTolerance(expectedFactor))
         {
-            errors.Add($"Factor must be {ArtificialInseminationFactor} (found: {FormatFactor(actualFactor.Value)})");
+            errors.Add($"Factor must be {expectedFactor} (found: {actualFactor})");
         }
 
         // Validate Price = 0.00
-        if (actualPrice == null)
+        if (actualPrice.Equals(default(Money)))
         {
-            errors.Add($"Price must be {ArtificialInseminationPrice:F2} (found: none)");
+            errors.Add($"Price must be {expectedPrice} (found: none)");
         }
-        else if (!ArePricesEqual(ArtificialInseminationPrice, actualPrice.Value))
+        else if (actualPrice != expectedPrice)
         {
-            errors.Add($"Price must be {ArtificialInseminationPrice:F2} (found: {actualPrice.Value:F2})");
+            errors.Add($"Price must be {expectedPrice} (found: {actualPrice})");
         }
 
         // Validate Price Identifier = "90"
-        if (string.IsNullOrEmpty(actualPriceId))
+        if (actualPriceId.Equals(default(PriceIdentifier)))
         {
-            errors.Add($"Price identifier must be '{ArtificialInseminationPriceId}' (found: none)");
+            errors.Add($"Price identifier must be '{expectedPriceId}' (found: none)");
         }
-        else if (actualPriceId != ArtificialInseminationPriceId)
+        else if (actualPriceId != expectedPriceId)
         {
-            errors.Add($"Price identifier must be '{ArtificialInseminationPriceId}' (found: '{actualPriceId}')");
+            errors.Add($"Price identifier must be '{expectedPriceId}' (found: '{actualPriceId}')");
         }
 
         if (errors.Count > 0)
         {
             result.AddError(
                 "CALC-003-E",
-                $"Artificial insemination special code (09999643) validation failed for line item {lineNumber}: " +
-                string.Join("; ", errors),
+                $"Artificial insemination special code ({SokCode.ArtificialInsemination}) validation failed " +
+                $"for line item {lineNumber}: {string.Join("; ", errors)}",
                 $"LineItem[{lineNumber}].ArtificialInsemination");
         }
-    }
-
-    /// <summary>
-    /// Normalize factor for comparison (handles different decimal representations)
-    /// e.g., 1, 1.0, 1.000000 should all be considered equal
-    /// </summary>
-    private decimal NormalizeFactor(decimal factor)
-    {
-        // Round to 6 decimal places (per TA1 spec)
-        return Math.Round(factor, 6, MidpointRounding.AwayFromZero);
-    }
-
-    /// <summary>
-    /// Check if two factors are equal within tolerance
-    /// </summary>
-    private bool AreFactorsEqual(decimal expected, decimal actual)
-    {
-        return Math.Abs(expected - actual) < DecimalTolerance;
-    }
-
-    /// <summary>
-    /// Check if two prices are equal within tolerance
-    /// </summary>
-    private bool ArePricesEqual(decimal expected, decimal actual)
-    {
-        // Prices use 2 decimal places
-        var roundedExpected = Math.Round(expected, 2, MidpointRounding.AwayFromZero);
-        var roundedActual = Math.Round(actual, 2, MidpointRounding.AwayFromZero);
-        return Math.Abs(roundedExpected - roundedActual) < 0.01m;
-    }
-
-    /// <summary>
-    /// Format factor for display (removes unnecessary trailing zeros)
-    /// </summary>
-    private string FormatFactor(decimal factor)
-    {
-        // Format with up to 6 decimal places, removing trailing zeros
-        var formatted = factor.ToString("0.######");
-        return formatted;
     }
 }
