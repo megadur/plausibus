@@ -286,4 +286,89 @@ public static class FhirDataExtractor
         }
         return null;
     }
+
+    /// <summary>
+    /// Extract dispensed quantity from Invoice line item
+    /// </summary>
+    public static decimal? ExtractDispensedQuantity(Invoice.LineItemComponent lineItem)
+    {
+        // Quantity may be in priceComponent or in extensions
+        var priceComponent = lineItem.PriceComponent?.FirstOrDefault();
+        if (priceComponent?.Factor != null)
+        {
+            // If factor exists, it might represent the quantity relationship
+            // However, we need the actual dispensed quantity value
+            // Check for quantity extensions
+            var quantityExt = priceComponent.Extension?
+                .FirstOrDefault(e => e.Url?.Contains("Quantity") == true ||
+                                   e.Url?.Contains("quantity") == true);
+
+            if (quantityExt?.Value is FhirDecimal qtyDecimal)
+            {
+                return qtyDecimal.Value;
+            }
+            else if (quantityExt?.Value is Quantity qtyValue)
+            {
+                return qtyValue.Value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extract package quantity from Invoice line item or Medication
+    /// </summary>
+    public static decimal? ExtractPackageQuantity(Invoice.LineItemComponent lineItem, Medication? medication = null)
+    {
+        // Try to get from extensions first
+        var packageExt = lineItem.Extension?
+            .FirstOrDefault(e => e.Url?.Contains("Package") == true ||
+                               e.Url?.Contains("package") == true);
+
+        if (packageExt?.Value is FhirDecimal pkgDecimal)
+        {
+            return pkgDecimal.Value;
+        }
+        else if (packageExt?.Value is Quantity pkgQty)
+        {
+            return pkgQty.Value;
+        }
+
+        // If not in line item, try to get from Medication resource
+        if (medication != null)
+        {
+            var packageSize = ExtractPackageSize(medication);
+            if (decimal.TryParse(packageSize, out var size))
+            {
+                return size;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extract MedicationDispenses from bundle
+    /// </summary>
+    public static List<MedicationDispense> ExtractMedicationDispenses(Bundle bundle)
+    {
+        return bundle.Entry?
+            .Where(e => e.Resource is MedicationDispense)
+            .Select(e => (MedicationDispense)e.Resource)
+            .ToList() ?? new List<MedicationDispense>();
+    }
+
+    /// <summary>
+    /// Extract dispensing date from MedicationDispense
+    /// </summary>
+    public static DateTimeOffset? ExtractDispensingDate(List<MedicationDispense> medicationDispenses)
+    {
+        var dispense = medicationDispenses.FirstOrDefault();
+        if (dispense?.WhenHandedOver != null)
+        {
+            return DateTimeOffset.Parse(dispense.WhenHandedOver);
+        }
+        return null;
+    }
 }

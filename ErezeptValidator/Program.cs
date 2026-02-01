@@ -21,8 +21,8 @@ builder.Services.AddSwaggerGen(c =>
         Title = "E-Rezept Validator API",
         Version = "v1.0.0-mvp",
         Description = "API for validating E-Rezept prescriptions according to TA1 Version 039 specifications.\n\n" +
-                      "**MVP Scope**: Format validations (FMT-001 to FMT-010), General rules (GEN-001 to GEN-008), " +
-                      "Basic calculations (CALC-001 to CALC-003). Includes PZN validation via ABDATA and SOK code lookups."
+                      "**Implemented Rules**: Format validations (FMT-001 to FMT-005), General rules (GEN-001 to GEN-008), " +
+                      "Calculations (CALC-001 to CALC-003), PZN validation via ABDATA, SOK code lookups, and BTM detection."
     });
 
     // Enable XML comments for Swagger documentation
@@ -61,6 +61,7 @@ builder.Services.AddScoped<IValidator, PznExistsValidator>();
 builder.Services.AddScoped<IValidator, BtmDetectionValidator>();
 builder.Services.AddScoped<IValidator, FhirFormatValidator>();
 builder.Services.AddScoped<IValidator, FhirAbgabedatenValidator>();
+builder.Services.AddScoped<IValidator, CalculationValidator>();
 
 // Register validation pipeline
 builder.Services.AddScoped<ValidationPipeline>();
