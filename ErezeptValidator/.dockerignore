@@ -1,0 +1,40 @@
+# .NET build artifacts
+bin/
+obj/
+out/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+
+# IDE files
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Test files
+**/test*
+**/*.Test/
+**/*.Tests/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
