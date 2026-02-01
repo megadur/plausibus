@@ -65,6 +65,18 @@ public readonly struct SokCode : IEquatable<SokCode>
     /// </summary>
     public bool IsArtificialInsemination => _code == "09999643";
 
+    /// <summary>
+    /// Check if this is a compounding (Rezeptur) special code
+    /// Compounding codes: 06460702 (standard), 09999011 (alternative)
+    /// Reference: TA1 REZ-013
+    /// </summary>
+    public bool IsCompounding => _code is "06460702" or "09999011";
+
+    /// <summary>
+    /// Get the artificial insemination code constant
+    /// </summary>
+    private static string ArtificialInseminationCode => "09999643";
+
     // Equality
     public bool Equals(SokCode other)
         => _code == other._code;

@@ -84,6 +84,34 @@ public readonly struct Money : IEquatable<Money>, IComparable<Money>
         return new Money((long)Math.Round(_cents * factor, MidpointRounding.AwayFromZero), Currency);
     }
 
+    /// <summary>
+    /// Subtract two Money amounts (same currency)
+    /// </summary>
+    public Money Subtract(Money other)
+    {
+        if (Currency != other.Currency)
+            throw new InvalidOperationException($"Cannot subtract {other.Currency} from {Currency}");
+
+        return new Money(Math.Abs(_cents - other._cents), Currency); // Always return positive for Abs use case
+    }
+
+    /// <summary>
+    /// Get absolute difference between two Money amounts
+    /// </summary>
+    public static Money Abs(Money value)
+    {
+        return new Money(Math.Abs(value._cents), value.Currency);
+    }
+
+    /// <summary>
+    /// Round to 2 decimal places (already internally stored as cents, but useful for ensuring precision)
+    /// </summary>
+    public Money Round()
+    {
+        // Already stored as cents (2 decimal precision), so just return self
+        return this;
+    }
+
     // Equality
     public bool Equals(Money other)
         => _cents == other._cents && Currency == other.Currency;
@@ -112,6 +140,7 @@ public readonly struct Money : IEquatable<Money>, IComparable<Money>
     public static bool operator >=(Money left, Money right) => left.CompareTo(right) >= 0;
 
     public static Money operator +(Money left, Money right) => left.Add(right);
+    public static Money operator -(Money left, Money right) => left.Subtract(right);
     public static Money operator *(Money money, decimal factor) => money.Multiply(factor);
 
     public override string ToString() => $"{ToDecimal():F2} {Currency}";

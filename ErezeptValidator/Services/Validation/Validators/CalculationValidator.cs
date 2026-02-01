@@ -7,7 +7,7 @@ using ErezeptValidator.Services.Validation.Helpers;
 namespace ErezeptValidator.Services.Validation.Validators;
 
 /// <summary>
-/// Validator for calculation rules (CALC-001 to CALC-003)
+/// Validator for calculation rules (CALC-001 to CALC-007)
 /// Validates factors, prices, and special calculations for Abgabedaten bundles
 /// Uses value objects for type safety and business logic encapsulation
 /// </summary>
@@ -64,11 +64,13 @@ public class CalculationValidator : IValidator
         ValidationResult result)
     {
         // Extract as value objects
+        var pznString = FhirDataExtractor.ExtractPznFromLineItem(lineItem);
         var sokString = FhirDataExtractor.ExtractSokCode(lineItem);
         var (_, factorValue) = FhirDataExtractor.ExtractFactor(lineItem);
         var (priceCodeString, priceAmount) = FhirDataExtractor.ExtractPrice(lineItem);
 
         // Try to create value objects
+        Pzn.TryCreate(pznString, out var pzn);
         SokCode.TryCreate(sokString, out var sok);
         PromilleFactor.TryParse(factorValue, out var actualFactor);
         Money.TryParse(priceAmount, out var actualPrice);
@@ -85,11 +87,25 @@ public class CalculationValidator : IValidator
         if (sok.HasNoQuantityReference)
         {
             ValidateSpecialCodeFactor(sok, actualFactor, lineNumber, result);
-            return; // Skip CALC-001 for these special codes
+            // Don't return - still validate price calculation if applicable
+        }
+        else
+        {
+            // CALC-001: Standard Promilleanteil formula validation (only for quantity-based)
+            await ValidateStandardFactorCalculationAsync(lineItem, actualFactor, lineNumber, result);
         }
 
-        // CALC-001: Standard Promilleanteil formula validation
-        await ValidateStandardFactorCalculationAsync(lineItem, actualFactor, lineNumber, result);
+        // CALC-004: Basic price calculation validation
+        if (!pzn.Equals(default(Pzn)) && !priceId.Equals(default(PriceIdentifier)) && priceId.UsesAbdataBasePrice)
+        {
+            await ValidatePriceCalculationAsync(pzn, actualFactor, priceId, actualPrice, lineNumber, result);
+        }
+
+        // CALC-005: VAT exclusion for compounding preparations
+        if (!sok.Equals(default(SokCode)) && sok.IsCompounding)
+        {
+            await ValidateVatExclusionAsync(sok, priceId, lineNumber, result);
+        }
     }
 
     /// <summary>
@@ -233,5 +249,142 @@ public class CalculationValidator : IValidator
                 $"for line item {lineNumber}: {string.Join("; ", errors)}",
                 $"LineItem[{lineNumber}].ArtificialInsemination");
         }
+    }
+
+    /// <summary>
+    /// CALC-004: Basic price calculation validation
+    /// Formula: Price = (Factor / 1000) × Base_Price_per_PriceIdentifier
+    /// </summary>
+    private async System.Threading.Tasks.Task ValidatePriceCalculationAsync(
+        Pzn pzn,
+        PromilleFactor factor,
+        PriceIdentifier priceId,
+        Money actualPrice,
+        int lineNumber,
+        ValidationResult result)
+    {
+        // Skip if missing required values
+        if (factor.Equals(default(PromilleFactor)) || actualPrice.Equals(default(Money)))
+        {
+            _logger.LogDebug(
+                "Skipping CALC-004 for line {LineNumber} - missing factor or price",
+                lineNumber);
+            return;
+        }
+
+        // Look up article in ABDATA to get base price
+        var article = await _pznRepository.GetByPznAsync(pzn.ToString());
+        if (article == null)
+        {
+            _logger.LogWarning(
+                "Cannot validate price calculation for line {LineNumber} - PZN {Pzn} not found in ABDATA",
+                lineNumber, pzn);
+            return; // PZN validation happens elsewhere (PznExistsValidator)
+        }
+
+        // Get base price from ABDATA based on price identifier
+        Money basePrice;
+        string priceField = priceId.GetAbdataPriceField() ?? "";
+
+        switch (priceField)
+        {
+            case "AEK":
+                basePrice = Money.FromCents(article.ApoEk);
+                break;
+            case "AVK":
+                basePrice = Money.FromCents(article.ApoVk);
+                break;
+            default:
+                // Contracted prices (12, 15, 16, 17, 21) don't use ABDATA
+                _logger.LogDebug(
+                    "Skipping CALC-004 for line {LineNumber} - price identifier {PriceId} uses contracted price",
+                    lineNumber, priceId);
+                return;
+        }
+
+        // Calculate expected price: (Factor / 1000) × Base_Price
+        var expectedPrice = CalculateExpectedPrice(factor, basePrice);
+
+        // Compare with tolerance (0.01 EUR for rounding differences)
+        var tolerance = Money.Euro(0.01m);
+        var difference = Money.Abs(actualPrice - expectedPrice);
+
+        if (difference > tolerance)
+        {
+            result.AddError(
+                "CALC-004-E",
+                $"Price calculation incorrect for line item {lineNumber}. " +
+                $"Formula: ({factor} / 1000) × {basePrice} ({priceField} from ABDATA). " +
+                $"Expected: {expectedPrice}, Found: {actualPrice}, " +
+                $"Difference: {difference}",
+                $"LineItem[{lineNumber}].Price");
+
+            _logger.LogWarning(
+                "CALC-004 failed for line {LineNumber}: Expected {Expected}, Found {Actual}",
+                lineNumber, expectedPrice, actualPrice);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "CALC-004 passed for line {LineNumber}: {ActualPrice} matches expected {ExpectedPrice}",
+                lineNumber, actualPrice, expectedPrice);
+        }
+    }
+
+    /// <summary>
+    /// Calculate expected price using formula: (Factor / 1000) × Base_Price
+    /// </summary>
+    private Money CalculateExpectedPrice(PromilleFactor factor, Money basePrice)
+    {
+        // Convert factor to decimal (divide by 1000 to get the multiplier)
+        decimal factorAsDecimal = factor.ToDecimal();
+        decimal multiplier = factorAsDecimal / 1000m;
+
+        // Multiply base price by the multiplier
+        var expectedPrice = basePrice * multiplier;
+
+        // Round to 2 decimal places (EUR cent precision)
+        return expectedPrice.Round();
+    }
+
+    /// <summary>
+    /// CALC-005: VAT Exclusion in Price Field (basic check for compounding)
+    /// Full implementation deferred to REZ-xxx validation rules
+    /// </summary>
+    private async System.Threading.Tasks.Task ValidateVatExclusionAsync(
+        SokCode sok,
+        PriceIdentifier priceId,
+        int lineNumber,
+        ValidationResult result)
+    {
+        // Only applies to compounding preparations
+        if (!sok.IsCompounding)
+        {
+            return;
+        }
+
+        // For compounding, price identifier should use net price (excl. VAT)
+        // Check if price identifier is documented as excluding VAT
+        if (!priceId.Equals(default(PriceIdentifier)))
+        {
+            var priceCode = await _codeLookupService.GetPriceCodeAsync(priceId.ToString());
+
+            if (priceCode != null && priceCode.TaxStatus.Contains("incl", StringComparison.OrdinalIgnoreCase))
+            {
+                result.AddError(
+                    "CALC-005-E",
+                    $"Compounding line item {lineNumber} uses price identifier '{priceId}' with tax status '{priceCode.TaxStatus}'. " +
+                    $"Compounding prices must exclude VAT (tax status should be 'excl. VAT'). " +
+                    $"Reference: TA1 Section 4.14.2",
+                    $"LineItem[{lineNumber}].PriceIdentifier");
+
+                _logger.LogWarning(
+                    "CALC-005 failed for compounding line {LineNumber}: Price identifier {PriceId} has tax status '{TaxStatus}'",
+                    lineNumber, priceId, priceCode.TaxStatus);
+            }
+        }
+
+        // Note: Full VAT calculation validation will be implemented in REZ-xxx validation rules
+        // which will have more context about expected compounding prices
     }
 }
