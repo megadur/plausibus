@@ -4,20 +4,51 @@ using Microsoft.AspNetCore.Mvc;
 namespace ErezeptValidator.Controllers;
 
 /// <summary>
-/// Test controller for PZN lookup and ABDATA database connectivity
+/// DEVELOPMENT ONLY: Test controller for PZN lookup and ABDATA database connectivity.
+/// This controller is automatically disabled in Production environments.
 /// </summary>
+/// <remarks>
+/// WARNING: This controller exposes internal database details and should never be deployed to production.
+/// It is automatically excluded from the API in non-Development environments.
+/// </remarks>
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+#if !DEBUG
+[ApiExplorerSettings(IgnoreApi = true)]
+#endif
 public class PznTestController : ControllerBase
 {
     private readonly IPznRepository _pznRepository;
     private readonly ILogger<PznTestController> _logger;
+    private readonly IWebHostEnvironment _environment;
 
-    public PznTestController(IPznRepository pznRepository, ILogger<PznTestController> logger)
+    public PznTestController(
+        IPznRepository pznRepository,
+        ILogger<PznTestController> logger,
+        IWebHostEnvironment environment)
     {
         _pznRepository = pznRepository;
         _logger = logger;
+        _environment = environment;
+    }
+
+    /// <summary>
+    /// Checks if the controller is available in the current environment
+    /// </summary>
+    private IActionResult? CheckEnvironment()
+    {
+        if (!_environment.IsDevelopment())
+        {
+            _logger.LogWarning("PznTestController accessed in non-Development environment: {Environment}", _environment.EnvironmentName);
+            return NotFound(new
+            {
+                error = "Endpoint not available",
+                message = "This endpoint is only available in Development environments",
+                environment = _environment.EnvironmentName
+            });
+        }
+        return null;
     }
 
     /// <summary>
@@ -31,6 +62,9 @@ public class PznTestController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetByPzn(string pzn)
     {
+        var envCheck = CheckEnvironment();
+        if (envCheck != null) return envCheck;
+
         _logger.LogInformation("Received request for PZN: {Pzn}", pzn);
 
         if (!_pznRepository.ValidatePznFormat(pzn))
@@ -101,6 +135,9 @@ public class PznTestController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult ValidatePzn(string pzn)
     {
+        var envCheck = CheckEnvironment();
+        if (envCheck != null) return envCheck;
+
         var formatValid = _pznRepository.ValidatePznFormat(pzn);
         var checksumValid = formatValid && _pznRepository.ValidatePznChecksum(pzn);
 
@@ -128,6 +165,9 @@ public class PznTestController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int limit = 10)
     {
+        var envCheck = CheckEnvironment();
+        if (envCheck != null) return envCheck;
+
         if (string.IsNullOrWhiteSpace(q) || q.Length < 3)
         {
             return BadRequest(new
@@ -164,6 +204,9 @@ public class PznTestController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetBatch([FromBody] string[] pzns)
     {
+        var envCheck = CheckEnvironment();
+        if (envCheck != null) return envCheck;
+
         if (pzns == null || pzns.Length == 0)
         {
             return BadRequest(new
@@ -209,6 +252,9 @@ public class PznTestController : ControllerBase
     [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> HealthCheck()
     {
+        var envCheck = CheckEnvironment();
+        if (envCheck != null) return envCheck;
+
         try
         {
             // Try to search for a common medication (should exist in any ABDATA database)

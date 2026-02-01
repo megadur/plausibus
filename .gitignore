@@ -417,4 +417,7 @@ FodyWeavers.xsd
 *.msm
 *.msp
 nul
-.claude/settings.local.json
+
+# Claude Code settings (user-specific)
+.claude/
+**/.claude/
