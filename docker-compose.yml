@@ -15,8 +15,8 @@ services:
       # Using host.docker.internal to connect to PostgreSQL on host
       ConnectionStrings__Ta1ReferenceDatabase: "Host=host.docker.internal;Port=5432;Database=erezept_validator;Username=erezept_user;Password=Segelboot.1;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=20;Connection Lifetime=300;Timeout=30"
 
-      # ABDATA connection (update with your SQL Server details)
-      ConnectionStrings__AbdataDatabase: "Data Source=host.docker.internal;Initial Catalog=ABDATA1225A;User ID=sa;Password=YourPassword;TrustServerCertificate=true;Connection Timeout=30"
+      # ABDATA connection (using credentials from appsettings.json)
+      ConnectionStrings__AbdataDatabase: "Data Source=host.docker.internal;Initial Catalog=ABDATA1225A;User ID=sa;Password=Segelboot.1;Pooling=True;Connect Timeout=30;Encrypt=True;Trust Server Certificate=True;Authentication=SqlPassword;Application Name=ErezeptValidator"
 
       # Application settings
       ASPNETCORE_ENVIRONMENT: Development
