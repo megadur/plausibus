@@ -20,7 +20,7 @@ public class ValidationPipeline
     /// <summary>
     /// Execute all validators against the FHIR bundle
     /// </summary>
-    public async Task<List<ValidationResult>> ValidateAsync(Bundle bundle)
+    public virtual async Task<List<ValidationResult>> ValidateAsync(Bundle bundle)
     {
         _logger.LogInformation("Starting validation pipeline for bundle {BundleId}", bundle.Id);
 

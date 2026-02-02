@@ -1,9 +1,9 @@
-using System.Text.Json;
+using System.Text;
 using ErezeptValidator.Controllers;
-using ErezeptValidator.Data;
-using ErezeptValidator.Models.Abdata;
-using ErezeptValidator.Models.Ta1Reference;
+using ErezeptValidator.Models.Validation;
+using ErezeptValidator.Services.Validation;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -15,31 +15,36 @@ namespace ErezeptValidator.Tests.Controllers;
 /// </summary>
 public class ValidationControllerTests
 {
-    private readonly Mock<IPznRepository> _mockPznRepository;
-    private readonly Mock<ITa1Repository> _mockTa1Repository;
+    private readonly Mock<ValidationPipeline> _mockPipeline;
     private readonly Mock<ILogger<ValidationController>> _mockLogger;
     private readonly ValidationController _controller;
 
     public ValidationControllerTests()
     {
-        _mockPznRepository = new Mock<IPznRepository>();
-        _mockTa1Repository = new Mock<ITa1Repository>();
-        _mockLogger = new Mock<ILogger<ValidationController>>();
-        _controller = new ValidationController(
-            _mockPznRepository.Object,
-            _mockTa1Repository.Object,
-            _mockLogger.Object
+        _mockPipeline = new Mock<ValidationPipeline>(
+            Mock.Of<IEnumerable<IValidator>>(),
+            Mock.Of<ILogger<ValidationPipeline>>()
         );
+        _mockLogger = new Mock<ILogger<ValidationController>>();
+        _controller = new ValidationController(_mockPipeline.Object, _mockLogger.Object);
+
+        // Setup HttpContext for controller
+        _controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext()
+        };
     }
 
     [Fact]
-    public async Task ValidateERezept_NullPayload_ReturnsBadRequest()
+    public async Task ValidateERezept_EmptyBody_ReturnsBadRequest()
     {
         // Arrange
-        var nullJson = JsonDocument.Parse("null").RootElement;
+        var emptyBody = new MemoryStream(Encoding.UTF8.GetBytes(""));
+        _controller.ControllerContext.HttpContext.Request.Body = emptyBody;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
 
         // Act
-        var result = await _controller.ValidateERezept(nullJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<BadRequestObjectResult>();
@@ -48,13 +53,30 @@ public class ValidationControllerTests
     }
 
     [Fact]
+    public async Task ValidateERezept_WhitespaceOnly_ReturnsBadRequest()
+    {
+        // Arrange
+        var whitespaceBody = new MemoryStream(Encoding.UTF8.GetBytes("   \n\t  "));
+        _controller.ControllerContext.HttpContext.Request.Body = whitespaceBody;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        // Act
+        var result = await _controller.ValidateERezept();
+
+        // Assert
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task ValidateERezept_InvalidJson_ReturnsBadRequest()
     {
         // Arrange
-        var invalidJson = JsonDocument.Parse("{}").RootElement;
+        var invalidJson = new MemoryStream(Encoding.UTF8.GetBytes("{invalid json"));
+        _controller.ControllerContext.HttpContext.Request.Body = invalidJson;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
 
         // Act
-        var result = await _controller.ValidateERezept(invalidJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<BadRequestObjectResult>();
@@ -64,145 +86,142 @@ public class ValidationControllerTests
     public async Task ValidateERezept_NonBundleResource_ReturnsBadRequest()
     {
         // Arrange - FHIR Patient resource instead of Bundle
-        var patientJson = JsonDocument.Parse(@"{
+        var patientJson = @"{
             ""resourceType"": ""Patient"",
             ""id"": ""test-patient""
-        }").RootElement;
+        }";
+        var body = new MemoryStream(Encoding.UTF8.GetBytes(patientJson));
+        _controller.ControllerContext.HttpContext.Request.Body = body;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
 
         // Act
-        var result = await _controller.ValidateERezept(patientJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<BadRequestObjectResult>();
         var badRequest = result as BadRequestObjectResult;
         badRequest!.Value.Should().NotBeNull();
-        var responseJson = JsonSerializer.Serialize(badRequest.Value);
-        responseJson.Should().Contain("error");
+        var valueStr = System.Text.Json.JsonSerializer.Serialize(badRequest.Value);
+        valueStr.Should().Contain("Invalid resource type");
     }
 
     [Fact]
-    public async Task ValidateERezept_ValidBundle_InvalidPzn_ReturnsErrorStatus()
+    public async Task ValidateERezept_ValidBundle_NoErrors_ReturnsPassStatus()
     {
         // Arrange
-        _mockPznRepository.Setup(x => x.ValidatePznFormat(It.IsAny<string>())).Returns(false);
+        var bundleJson = CreateSampleBundleJson("00285949");
+        var body = new MemoryStream(Encoding.UTF8.GetBytes(bundleJson));
+        _controller.ControllerContext.HttpContext.Request.Body = body;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
 
+        // Mock pipeline to return successful validation
+        var validationResults = new List<ValidationResult>
+        {
+            new ValidationResult { ValidatorName = "TestValidator" }
+        };
+        _mockPipeline.Setup(x => x.ValidateAsync(It.IsAny<Hl7.Fhir.Model.Bundle>()))
+            .ReturnsAsync(validationResults);
+
+        // Act
+        var result = await _controller.ValidateERezept();
+
+        // Assert
+        result.Should().BeOfType<OkObjectResult>();
+        var okResult = result as OkObjectResult;
+        okResult.Should().NotBeNull();
+
+        // Verify the response structure
+        var value = okResult!.Value;
+        value.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ValidateERezept_ValidBundle_WithErrors_ReturnsErrorStatus()
+    {
+        // Arrange
         var bundleJson = CreateSampleBundleJson("12345678");
+        var body = new MemoryStream(Encoding.UTF8.GetBytes(bundleJson));
+        _controller.ControllerContext.HttpContext.Request.Body = body;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        // Mock pipeline to return validation errors
+        var validationResult = new ValidationResult { ValidatorName = "PznFormatValidator" };
+        validationResult.AddError("FMT-001", "Invalid PZN format", pzn: "12345678");
+
+        var validationResults = new List<ValidationResult> { validationResult };
+        _mockPipeline.Setup(x => x.ValidateAsync(It.IsAny<Hl7.Fhir.Model.Bundle>()))
+            .ReturnsAsync(validationResults);
 
         // Act
-        var result = await _controller.ValidateERezept(bundleJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
         var okResult = result as OkObjectResult;
-        var responseJson = JsonSerializer.Serialize(okResult!.Value);
-        responseJson.Should().Contain("ERROR");
-        responseJson.Should().Contain("FMT-001");
+        okResult!.Value.Should().NotBeNull();
+        var valueStr = System.Text.Json.JsonSerializer.Serialize(okResult.Value);
+        valueStr.Should().Contain("\"status\":\"ERROR\"");
     }
 
     [Fact]
-    public async Task ValidateERezept_ValidBundle_ValidPzn_NotFoundInDb_ReturnsError()
+    public async Task ValidateERezept_ValidBundle_WithWarnings_ReturnsPassStatus()
     {
         // Arrange
-        _mockPznRepository.Setup(x => x.ValidatePznFormat(It.IsAny<string>())).Returns(true);
-        _mockPznRepository.Setup(x => x.GetByPznAsync(It.IsAny<string>())).ReturnsAsync((PacApoArticle?)null);
-
         var bundleJson = CreateSampleBundleJson("00285949");
+        var body = new MemoryStream(Encoding.UTF8.GetBytes(bundleJson));
+        _controller.ControllerContext.HttpContext.Request.Body = body;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/json";
+
+        // Mock pipeline to return warnings only
+        var validationResult = new ValidationResult { ValidatorName = "BtmDetectionValidator" };
+        validationResult.AddWarning("BTM-003", "BTM prescription validity warning");
+
+        var validationResults = new List<ValidationResult> { validationResult };
+        _mockPipeline.Setup(x => x.ValidateAsync(It.IsAny<Hl7.Fhir.Model.Bundle>()))
+            .ReturnsAsync(validationResults);
 
         // Act
-        var result = await _controller.ValidateERezept(bundleJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
         var okResult = result as OkObjectResult;
-        var responseJson = JsonSerializer.Serialize(okResult!.Value);
-        responseJson.Should().Contain("DATA-001");
+        okResult!.Value.Should().NotBeNull();
+        var valueStr = System.Text.Json.JsonSerializer.Serialize(okResult.Value);
+        valueStr.Should().Contain("\"status\":\"PASS\"");
     }
 
     [Fact]
-    public async Task ValidateERezept_ValidBundle_BtmProduct_ReturnsWarning()
+    public async Task ValidateERezept_XmlBundle_ParsesSuccessfully()
     {
         // Arrange
-        _mockPznRepository.Setup(x => x.ValidatePznFormat(It.IsAny<string>())).Returns(true);
-        _mockPznRepository.Setup(x => x.GetByPznAsync(It.IsAny<string>())).ReturnsAsync(new PacApoArticle
-        {
-            Pzn = "00285949",
-            Name = "Test BTM Product",
-            Btm = 2,  // BTM indicator (IsBtm computed property will be true)
-            Cannabis = 0
-        });
+        var bundleXml = CreateSampleBundleXml("00285949");
+        var body = new MemoryStream(Encoding.UTF8.GetBytes(bundleXml));
+        _controller.ControllerContext.HttpContext.Request.Body = body;
+        _controller.ControllerContext.HttpContext.Request.ContentType = "application/xml";
 
-        var bundleJson = CreateSampleBundleJson("00285949");
+        // Mock pipeline
+        var validationResults = new List<ValidationResult>
+        {
+            new ValidationResult { ValidatorName = "TestValidator" }
+        };
+        _mockPipeline.Setup(x => x.ValidateAsync(It.IsAny<Hl7.Fhir.Model.Bundle>()))
+            .ReturnsAsync(validationResults);
 
         // Act
-        var result = await _controller.ValidateERezept(bundleJson);
+        var result = await _controller.ValidateERezept();
 
         // Assert
         result.Should().BeOfType<OkObjectResult>();
-        var okResult = result as OkObjectResult;
-        var responseJson = JsonSerializer.Serialize(okResult!.Value);
-        responseJson.Should().Contain("BTM-001");
-    }
-
-    [Fact]
-    public async Task ValidateERezept_InvalidSokCode_ReturnsError()
-    {
-        // Arrange
-        _mockPznRepository.Setup(x => x.ValidatePznFormat(It.IsAny<string>())).Returns(true);
-        _mockPznRepository.Setup(x => x.GetByPznAsync(It.IsAny<string>())).ReturnsAsync(new PacApoArticle
-        {
-            Pzn = "00285949",
-            Name = "Test Product"
-        });
-        _mockTa1Repository.Setup(x => x.GetSpecialCodeAsync(It.IsAny<string>())).ReturnsAsync((SpecialCode?)null);
-
-        var bundleJson = CreateSampleBundleJson("00285949");
-
-        // Act
-        var result = await _controller.ValidateERezept(bundleJson);
-
-        // Assert
-        result.Should().BeOfType<OkObjectResult>();
-        var okResult = result as OkObjectResult;
-        var responseJson = JsonSerializer.Serialize(okResult!.Value);
-        responseJson.Should().Contain("SOK-001");
-    }
-
-    [Fact]
-    public async Task ValidateERezept_SokNotErezeptCompatible_ReturnsError()
-    {
-        // Arrange
-        _mockPznRepository.Setup(x => x.ValidatePznFormat(It.IsAny<string>())).Returns(true);
-        _mockPznRepository.Setup(x => x.GetByPznAsync(It.IsAny<string>())).ReturnsAsync(new PacApoArticle
-        {
-            Pzn = "00285949",
-            Name = "Test Product"
-        });
-        _mockTa1Repository.Setup(x => x.GetSpecialCodeAsync(It.IsAny<string>())).ReturnsAsync(new SpecialCode
-        {
-            Code = "09999005",
-            Description = "Test SOK",
-            CodeType = "SOK1",
-            ERezept = 0 // Not E-Rezept compatible
-        });
-
-        var bundleJson = CreateSampleBundleJson("00285949");
-
-        // Act
-        var result = await _controller.ValidateERezept(bundleJson);
-
-        // Assert
-        result.Should().BeOfType<OkObjectResult>();
-        var okResult = result as OkObjectResult;
-        var responseJson = JsonSerializer.Serialize(okResult!.Value);
-        responseJson.Should().Contain("SOK-002");
+        _mockPipeline.Verify(x => x.ValidateAsync(It.IsAny<Hl7.Fhir.Model.Bundle>()), Times.Once);
     }
 
     /// <summary>
     /// Helper method to create a minimal FHIR Bundle JSON for testing
     /// </summary>
-    private JsonElement CreateSampleBundleJson(string pzn)
+    private string CreateSampleBundleJson(string pzn)
     {
-        var bundleJsonString = $@"{{
+        return $@"{{
             ""resourceType"": ""Bundle"",
             ""id"": ""test-bundle-123"",
             ""type"": ""document"",
@@ -220,12 +239,43 @@ public class ValidationControllerTests
                                     ""code"": ""{pzn}""
                                 }}
                             ]
+                        }},
+                        ""subject"": {{
+                            ""reference"": ""Patient/test-patient""
                         }}
                     }}
                 }}
             ]
         }}";
+    }
 
-        return JsonDocument.Parse(bundleJsonString).RootElement;
+    /// <summary>
+    /// Helper method to create a minimal FHIR Bundle XML for testing
+    /// </summary>
+    private string CreateSampleBundleXml(string pzn)
+    {
+        return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
+<Bundle xmlns=""http://hl7.org/fhir"">
+    <id value=""test-bundle-123""/>
+    <type value=""document""/>
+    <entry>
+        <resource>
+            <MedicationRequest>
+                <id value=""test-med-request""/>
+                <status value=""active""/>
+                <intent value=""order""/>
+                <medicationCodeableConcept>
+                    <coding>
+                        <system value=""http://fhir.de/CodeSystem/ifa/pzn""/>
+                        <code value=""{pzn}""/>
+                    </coding>
+                </medicationCodeableConcept>
+                <subject>
+                    <reference value=""Patient/test-patient""/>
+                </subject>
+            </MedicationRequest>
+        </resource>
+    </entry>
+</Bundle>";
     }
 }
