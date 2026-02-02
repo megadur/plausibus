@@ -1,22 +1,25 @@
 # Project Status Report - E-Rezept Validator
 
-**Report Date:** 2026-01-31
+**Report Date:** 2026-02-02
 **Project:** Plausibus - E-Rezept Validator (TA1 Version 039)
 **Status:** 🟢 On Track
-**Overall Progress:** 33% (2 of 6 phases complete)
+**Overall Progress:** 40% (27 of 67 validation rules implemented)
 
 ---
 
 ## Executive Summary
 
-The E-Rezept Validator project is progressing excellently. **Phase 0 (Setup & Infrastructure)** and **Phase 1 (Data Access Layer)** are complete, delivering a solid foundation for the validation engine. Current velocity is 50% faster than estimates, projecting completion by **February 8-11, 2026**.
+The E-Rezept Validator project is progressing excellently. **Phase 0 (Setup & Infrastructure)**, **Phase 1 (Data Access Layer)**, and **Phase 3 (Validation Engine - Partial)** are complete. Major validation categories implemented: Format (FMT), General (GEN), Calculation (CALC), BTM, and Cannabis - totaling **27 of 67 rules (40%)**. Current velocity remains strong, projecting completion by **February 8-11, 2026**.
 
 ### Key Achievements
 - ✅ PostgreSQL database configured with 272 SOK codes, 4 factor codes, 9 price codes
 - ✅ Complete data access layer with caching and business logic
-- ✅ 5 validation models ready for Phase 3 validation engine
+- ✅ **27 validation rules implemented (40% coverage)**
+- ✅ BTM validation complete (BTM-001 to BTM-004) - 4 rules
+- ✅ Cannabis validation complete (CAN-001 to CAN-005) - 5 rules
+- ✅ ABDATA integration with BTM/Cannabis detection
 - ✅ Zero build errors/warnings, zero data duplicates
-- ✅ 1,641 lines of production code written
+- ✅ ~2,500+ lines of production code written
 
 ---
 
@@ -26,12 +29,12 @@ The E-Rezept Validator project is progressing excellently. **Phase 0 (Setup & In
 |-------|--------|----------|-------|-----|----------|-------|
 | **Phase 0:** Setup & Infrastructure | ✅ Complete | 100% | Jan 24 | Jan 24 | 1 day | PostgreSQL, entity models, context |
 | **Phase 1:** Data Access Layer | ✅ Complete | 100% | Jan 31 | Jan 31 | 1 day | Repository, caching, validation models |
-| **Phase 2:** Code Reference API | ⏭️ Next | 0% | - | - | Est. 1 day | REST endpoints for code lookup |
-| **Phase 3:** Validation Engine | 📅 Planned | 0% | - | - | Est. 3-4 days | 21 validation rules (FMT, GEN, CALC) |
+| **Phase 2:** Code Reference API | 📅 Skipped | 0% | - | - | - | Optional feature, deprioritized |
+| **Phase 3:** Validation Engine | 🚧 In Progress | 40% | Jan 31 | - | Ongoing | 27 of 67 rules: FMT, GEN, CALC, BTM, Cannabis |
 | **Phase 4:** Validation API | 📅 Planned | 0% | - | - | Est. 1-2 days | Prescription validation endpoint |
 | **Phase 5:** Integration & Testing | 📅 Planned | 0% | - | - | Est. 2-3 days | Tests, documentation, deployment |
 
-**Overall:** 2 of 6 phases complete (33%)
+**Overall:** 40% validation coverage (27/67 rules implemented)
 
 ---
 
@@ -39,17 +42,17 @@ The E-Rezept Validator project is progressing excellently. **Phase 0 (Setup & In
 
 ### Timeline
 - **Start Date:** January 24, 2026
-- **Current Duration:** 8 days
+- **Current Duration:** 10 days
 - **Original Estimate:** 13-19 days (2-3 weeks)
 - **Revised Estimate:** 15-18 days (~2.5 weeks)
 - **Projected Completion:** February 8-11, 2026
 - **Variance:** On track (ahead of schedule)
 
 ### Effort
-- **Total Hours Invested:** ~10-14 hours
-- **Estimated Remaining:** ~50-60 hours
-- **Velocity:** 1.5 phases per day (50% faster than estimated)
-- **Lines of Code:** ~1,641 lines (13 files created, 8 modified)
+- **Total Hours Invested:** ~16-20 hours
+- **Estimated Remaining:** ~40-50 hours
+- **Velocity:** 3 rules per day average (27 rules in 10 days)
+- **Lines of Code:** ~2,500+ lines (15 files created, 12 modified)
 
 ### Quality
 - **Build Status:** ✅ 0 errors, 0 warnings
@@ -66,22 +69,26 @@ The E-Rezept Validator project is progressing excellently. **Phase 0 (Setup & In
 
 ---
 
-## Current Sprint - Phase 2: Code Reference API
+## Current Sprint - Phase 3: Validation Engine (In Progress)
 
 ### Objective
-Create REST API endpoints for looking up TA1 reference codes.
+Implement comprehensive validation rules per TA1 Version 039 specification.
 
-### Scope
-- `GET /api/v1/codes/sok/{code}` - Lookup specific SOK code
-- `GET /api/v1/codes/factors` - List all factor codes
-- `GET /api/v1/codes/prices` - List all price codes
-- Swagger documentation for all endpoints
-- Integration with CodeLookupService (already implemented)
+### Completed (27/67 rules - 40%)
+- ✅ **Format Validation (FMT):** 10/10 rules - PZN format, checksums, ISO 8601 dates
+- ✅ **General Rules (GEN):** 8/8 rules - Timezone, SOK validity, VAT calculations
+- ✅ **Calculation Rules (CALC):** 7/7 rules - Promilleanteil, price calculations
+- ✅ **BTM Validation:** 4/4 rules - E-BTM fees, pharmaceutical listing, validity, diagnosis
+- ✅ **Cannabis Validation (CAN):** 5/5 rules - Special codes, factor validation, price rules
 
-### Estimated Effort
-- **Duration:** 1 day
-- **Complexity:** Low (service layer already complete)
-- **Risk:** Low
+### Remaining (40/67 rules - 60%)
+- ⭕ **Compounding (REZ):** 0/21 rules - High priority (REZ-001, 013, 018, 019, 021)
+- ⭕ **Fee Validation (FEE):** 0/3 rules - Messenger, Noctu, re-procurement fees
+- ⭕ **Special Cases (SPC):** 0/8 rules - Low-price meds, artificial insemination
+- ⭕ **Economic Single Quantity (ESQ):** 0/4 rules - Individual dispensing, blister packs
+
+### Current Focus
+Next sprint will tackle high-priority Compounding (REZ) rules.
 
 ---
 
@@ -128,29 +135,39 @@ All dependencies are resolved:
 - [x] 272 SOK codes loaded and verified
 - [x] DI container registrations updated
 
-### Phase 2 Deliverables (Next)
-- [ ] CodeReferenceController with 3 endpoints
-- [ ] Swagger documentation
-- [ ] Manual testing via Swagger UI
+### Phase 3 Deliverables (In Progress - 40%)
+- [x] FhirFormatValidator (158 lines) - FMT-001 to FMT-010
+- [x] PznFormatValidator (44 lines) - PZN validation
+- [x] FhirAbgabedatenValidator (309 lines) - GEN-001 to GEN-008
+- [x] CalculationValidator (390 lines) - CALC-001 to CALC-007
+- [x] BtmDetectionValidator (346 lines) - BTM-001 to BTM-004
+- [x] CannabisValidator (412 lines) - CAN-001 to CAN-005
+- [x] Validation rules status reports (English + German)
+- [ ] CompoundingValidator - REZ-001 to REZ-021 (Next)
+- [ ] FeeValidator - FEE-001 to FEE-003
+- [ ] SpecialCasesValidator - SPC-001 to SPC-008
+- [ ] EconomicSingleQuantityValidator - ESQ-001 to ESQ-004
 
 ---
 
 ## Next Steps
 
 ### Immediate (Next Session)
-1. **Start Phase 2:** Code Reference API
-   - Create `Controllers/CodeReferenceController.cs`
-   - Implement GET endpoints using CodeLookupService
-   - Test via Swagger UI
+1. **Continue Phase 3:** Compounding Validation (REZ)
+   - Implement high-priority rules: REZ-001, REZ-013, REZ-018, REZ-019, REZ-021
+   - Create `CompoundingValidator.cs`
+   - Test with compounding example bundles
 
 ### Short-term (This Week)
-2. **Complete Phase 2:** Code Reference API (1 day)
-3. **Start Phase 3:** Validation Engine (3-4 days)
+2. **Complete REZ rules:** 21 compounding validation rules (Est. 2-3 days)
+3. **Implement FEE rules:** 3 fee validation rules (Est. 1 day)
+4. **Implement SPC rules:** 8 special case rules (Est. 1 day)
+5. **Implement ESQ rules:** 4 economic single quantity rules (Est. 1 day)
 
-### Medium-term (Next 2 Weeks)
-4. **Complete Phase 3:** Validation Engine (21 rules)
-5. **Complete Phase 4:** Validation API (1-2 days)
-6. **Complete Phase 5:** Integration & Testing (2-3 days)
+### Medium-term (Next Week)
+6. **Complete Phase 3:** All 67 validation rules (40 remaining)
+7. **Complete Phase 4:** Validation API integration (1-2 days)
+8. **Complete Phase 5:** Integration & Testing (2-3 days)
 
 ---
 
@@ -181,12 +198,15 @@ All dependencies are resolved:
 ## Appendix
 
 ### Recent Commits
+- `48fbd91` (2026-02-01) - feat: Implement BTM and Cannabis validation rules (BTM-001 to BTM-004, CAN-001 to CAN-005)
+- `579e414` (2026-02-01) - docs: Add German translation of validation rules status report
+- `8a74af1` (2026-02-01) - docs: Add comprehensive validation rules status report
 - `161e7a9` (2026-01-31) - feat: Complete Phase 1 - Data Access Layer
 - `0462def` (2026-01-31) - fix bmad entfernt
 - `241d447` (2026-01-29) - feat: Add comprehensive test project
 - `4d2c990` (2026-01-24) - feat: Phase 0 - PostgreSQL setup
 
-### Files Created (Phase 0-1)
+### Files Created (Phase 0-3 Partial)
 1. Ta1DbContext.cs (224 lines)
 2. SpecialCode.cs (165 lines)
 3. FactorCode.cs (52 lines)
@@ -200,11 +220,18 @@ All dependencies are resolved:
 11. ValidationError.cs (42 lines)
 12. ValidationWarning.cs (37 lines)
 13. CodeLookupService.cs (220 lines)
+14. FhirFormatValidator.cs (158 lines)
+15. PznFormatValidator.cs (44 lines)
+16. FhirAbgabedatenValidator.cs (309 lines)
+17. CalculationValidator.cs (390 lines)
+18. BtmDetectionValidator.cs (346 lines)
+19. CannabisValidator.cs (412 lines)
+20. PznExistsValidator.cs (44 lines)
 
-**Total:** ~1,641 lines across 13 files
+**Total:** ~2,500+ lines across 20 files
 
 ---
 
-**Report Generated:** 2026-01-31 13:45 CET
-**Next Report:** After Phase 2 completion
+**Report Generated:** 2026-02-02 18:05 CET
+**Next Report:** After Compounding (REZ) rules implementation
 **Contact:** Development team via Git commits

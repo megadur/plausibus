@@ -2,8 +2,8 @@
 
 **Project:** Plausibus - E-Rezept Validator (TA1 Version 039)
 **Start Date:** 2026-01-24
-**Current Date:** 2026-01-31
-**Total Project Duration:** 8 days
+**Current Date:** 2026-02-02
+**Total Project Duration:** 10 days
 
 ---
 
@@ -13,13 +13,13 @@
 |-------|--------|------------|----------|----------|---------------------|
 | Phase 0: Setup & Infrastructure | ✅ Complete | 2026-01-24 | 2026-01-24 | 1 day | 6-8 hours |
 | Phase 1: Data Access Layer | ✅ Complete | 2026-01-31 | 2026-01-31 | 1 day | 4-6 hours |
-| Phase 2: Code Reference API | ⏭️ Next | - | - | - | - |
-| Phase 3: Validation Engine | 📅 Planned | - | - | - | - |
+| Phase 2: Code Reference API | ⏭️ Skipped | - | - | - | Deprioritized |
+| Phase 3: Validation Engine | 🚧 In Progress | 2026-01-31 | - | Ongoing | 6-8 hours (so far) |
 | Phase 4: Validation API | 📅 Planned | - | - | - | - |
 | Phase 5: Integration & Testing | 📅 Planned | - | - | - | - |
 
-**Total Effort So Far:** ~10-14 hours
-**Estimated Remaining:** ~50-60 hours (2-3 weeks)
+**Total Effort So Far:** ~16-20 hours
+**Estimated Remaining:** ~40-50 hours (2-3 weeks)
 
 ---
 
@@ -117,18 +117,54 @@
 
 ---
 
+#### Saturday, February 1, 2026 (Phase 3 - BTM & Cannabis)
+**Duration:** 6-8 hours
+**Focus:** BTM and Cannabis validation implementation
+
+**Activities:**
+- Morning/Afternoon | Phase 3 implementation:
+  - Implemented BTM validation rules (BTM-001 to BTM-004)
+    - E-BTM fee special code validation (SOK 02567001)
+    - Complete pharmaceutical listing checks (PZN, quantity, price)
+    - Seven-day validity rule per BtMG §3
+    - ICD-10 diagnosis code requirement validation
+  - Implemented Cannabis validation rules (CAN-001 to CAN-005)
+    - Cannabis special code validation (6 valid SOK codes)
+    - BTM/T-Rezept exclusion checks
+    - Factor = 1 validation for Cannabis lines
+    - Bruttopreis calculation per AMPreisV
+    - Manufacturing data completeness (Herstellungssegment)
+  - Created comprehensive validation rules status reports (English + German)
+  - ABDATA integration for BTM/Cannabis flag detection
+
+**Deliverables:**
+- BtmDetectionValidator.cs (346 lines) - 4 validation rules
+- CannabisValidator.cs (412 lines) - 5 validation rules
+- VALIDATION-RULES-STATUS.md (comprehensive English report)
+- VALIDATION-RULES-STATUS-DE.md (German translation)
+- 4 files changed (862 additions, 141 deletions)
+- **Validation Coverage:** 27/67 rules (40%)
+
+**Commits:**
+- `48fbd91` - feat: Implement BTM and Cannabis validation rules (BTM-001 to BTM-004, CAN-001 to CAN-005)
+- `579e414` - docs: Add German translation of validation rules status report
+- `8a74af1` - docs: Add comprehensive validation rules status report
+
+---
+
 ## Effort Breakdown by Activity
 
 ### Development Activities
 
 | Activity | Total Hours | Percentage |
 |----------|-------------|------------|
-| Database Setup & Configuration | 2-3 | 20% |
-| Entity Model Development | 2-3 | 20% |
-| Repository & Service Layer | 3-4 | 30% |
-| Data Loading & Testing | 2-3 | 20% |
-| Documentation | 1-2 | 10% |
-| **Total** | **10-14** | **100%** |
+| Database Setup & Configuration | 2-3 | 15% |
+| Entity Model Development | 2-3 | 15% |
+| Repository & Service Layer | 3-4 | 20% |
+| Validation Rules Implementation | 6-8 | 40% |
+| Data Loading & Testing | 2-3 | 10% |
+| Documentation | 1-2 | 5% |
+| **Total** | **16-20** | **100%** |
 
 ### Files Created/Modified
 
@@ -136,7 +172,8 @@
 |----------|---------------|----------------|-------------------|
 | Phase 0 | 5 | 3 | ~600 lines |
 | Phase 1 | 8 | 5 | 1,041 lines |
-| **Total** | **13** | **8** | **~1,641 lines** |
+| Phase 3 (Partial) | 7 | 2 | ~900 lines |
+| **Total** | **20** | **10** | **~2,500+ lines** |
 
 ---
 
@@ -144,12 +181,14 @@
 
 ### Completed Phases
 - **Phase 0:** 1 day (6-8 hours) → On target
-- **Phase 1:** 1 day (4-6 hours) → 50% faster than estimated (was 2-3 days)
+- **Phase 1:** 1 day (4-6 hours) → 50% faster than estimated
+- **Phase 3 (Partial):** 1 day (6-8 hours) → 27/67 rules complete (40%)
 
 ### Current Velocity
-- **Average:** ~1.5 phases per day
-- **Lines of Code:** ~820 LOC per phase
-- **Complexity:** Increasing (Phase 3 validation engine will be larger)
+- **Average:** ~3 validation rules per day
+- **Lines of Code:** ~250 LOC per day average
+- **Validation Coverage:** 27 of 67 rules (40%) in 10 days
+- **Complexity:** High (validation logic, ABDATA integration, FHIR parsing)
 
 ### Remaining Estimates
 
@@ -165,9 +204,10 @@ Based on current velocity and original estimates:
 
 ### Revised Timeline
 - **Original MVP Timeline:** 13-19 days (2-3 weeks)
-- **Current Progress:** 2 phases in 8 days (15% of time, 33% of phases complete)
+- **Current Progress:** 10 days elapsed, 40% validation coverage (27/67 rules)
+- **Remaining Work:** 40 validation rules + integration + testing
 - **Projected Completion:** ~15-18 days from start (Feb 8-11, 2026)
-- **Confidence:** High (velocity is strong, architecture is solid)
+- **Confidence:** High (velocity strong, 3 rules/day average on track)
 
 ---
 
@@ -188,15 +228,16 @@ Based on current velocity and original estimates:
 
 When resuming work:
 
-- [ ] Review Phase 1 commit (`161e7a9`)
+- [ ] Review BTM/Cannabis commits (`48fbd91`, `579e414`, `8a74af1`)
 - [ ] Verify PostgreSQL is running (`docker ps`)
 - [ ] Verify database has 272 SOK codes, 4 factors, 9 prices
-- [ ] Start Phase 2: Code Reference API
-  - Create CodeReferenceController
-  - Implement GET /api/v1/codes/sok/{code}
-  - Implement GET /api/v1/codes/factors
-  - Implement GET /api/v1/codes/prices
-  - Test via Swagger UI
+- [ ] Check validation rules status: 27/67 complete (40%)
+- [ ] Continue Phase 3: Compounding Validation (REZ)
+  - Review compounding example bundles in `docs/eRezept-Beispiele/`
+  - Create CompoundingValidator.cs
+  - Implement high-priority rules: REZ-001, REZ-013, REZ-018, REZ-019, REZ-021
+  - Test with Rezeptur-Verordnung examples
+  - Update validation rules status report
 
 ---
 
@@ -219,8 +260,12 @@ When resuming work:
 - SOK codes are 8-digit (like PZN), not 2-digit as initially assumed
 - SokCodeLoader handles date parsing complexities well (German format: dd.MM.yyyy)
 - E-Rezept compatibility flag: 0=not compatible, 1=compatible, 2=mandatory
+- ABDATA Btm flag meanings: 0=none, 2=BTM, 3=BTM exempt, 4=T-Rezept
+- Cannabis flag meanings: 0=none, 2=Cannabis § 31(6) SGB V, 3=Cannabis preparation
+- BTM and Cannabis are mutually exclusive (validation check required)
+- Context metadata pattern useful for cross-validator communication
 
 ---
 
-**Last Updated:** 2026-01-31 13:31 CET
-**Next Update:** After Phase 2 completion
+**Last Updated:** 2026-02-02 18:10 CET
+**Next Update:** After Compounding (REZ) rules implementation
