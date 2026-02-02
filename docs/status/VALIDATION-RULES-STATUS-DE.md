@@ -2,9 +2,9 @@
 
 **Letzte Aktualisierung:** 01.02.2026
 **Gesamtzahl Regeln in TA1-Spezifikation:** 67 Regeln
-**Implementiert:** 18 Regeln (27%)
+**Implementiert:** 27 Regeln (40%)
 **In Bearbeitung:** 0 Regeln
-**Ausstehend:** 49 Regeln (73%)
+**Ausstehend:** 40 Regeln (60%)
 
 ---
 
@@ -15,8 +15,8 @@
 | **Format (FMT)** | 10 | 10 | 0 | ✅ Vollständig |
 | **Allgemein (GEN)** | 8 | 8 | 0 | ✅ Vollständig |
 | **Berechnung (CALC)** | 7 | 7 | 0 | ✅ Vollständig |
-| **BTM** | 4 | 1 | 3 | 🟡 25% |
-| **Cannabis (CAN)** | 5 | 0 | 5 | ⭕ 0% |
+| **BTM** | 4 | 4 | 0 | ✅ Vollständig |
+| **Cannabis (CAN)** | 5 | 5 | 0 | ✅ Vollständig |
 | **Rezeptur (REZ)** | 21 | 0 | 21 | ⭕ 0% |
 | **Gebühren (FEE)** | 3 | 0 | 3 | ⭕ 0% |
 | **Sonderfälle (SPC)** | 8 | 0 | 8 | ⭕ 0% |
@@ -89,51 +89,63 @@
 
 ---
 
-### 🟡 BTM-Validierung - 1/4 (25%)
+### ✅ BTM-Validierung - 4/4 Vollständig
 
-**Validator:** `BtmDetectionValidator.cs` (nur grundlegende Erkennung)
+**Validator:** `BtmDetectionValidator.cs`
 
-| Regel | Beschreibung | Status | Priorität |
-|-------|--------------|--------|-----------|
-| BTM-001 | E-BTM Gebühren-Sonderkennzeichen | ⭕ Ausstehend | Hoch |
-| BTM-002 | Alle Arzneimittel müssen aufgeführt sein | ⭕ Ausstehend | Hoch |
-| BTM-003 | BTM Sieben-Tage-Gültigkeitsregel | ⭕ Ausstehend | Hoch |
-| BTM-004 | BTM Diagnose-Anforderung | ⭕ Ausstehend | Mittel |
+| Regel | Beschreibung | Status | Implementierung |
+|-------|--------------|--------|-----------------|
+| BTM-001 | E-BTM Gebühren-Sonderkennzeichen | ✅ Vollständig | `BtmDetectionValidator` |
+| BTM-002 | Alle Arzneimittel müssen aufgeführt sein | ✅ Vollständig | `BtmDetectionValidator` |
+| BTM-003 | BTM Sieben-Tage-Gültigkeitsregel | ✅ Vollständig | `BtmDetectionValidator` |
+| BTM-004 | BTM Diagnose-Anforderung | ✅ Vollständig | `BtmDetectionValidator` |
 
-**Aktuelle Implementierung:**
-- ✅ BTM-Erkennung über ABDATA (Btm-Flag = 2)
-- ✅ Grundlegende Klassifizierung (BTM, Ausnahme, T-Rezept)
-- ⭕ Geschäftslogik-Validierung ausstehend
+**Funktionen:**
+- ✅ BTM-Erkennung über ABDATA Batch-Lookup (Btm-Flag = 2)
+- ✅ T-Rezept-Erkennung (Btm-Flag = 4)
+- ✅ BTM-ausgenommene Zubereitung (Btm-Flag = 3)
+- ✅ E-BTM Gebühren-Sonderkennzeichen-Validierung (SOK 02567001)
+- ✅ Gebührenfaktor-Validierung (muss BTM-Arzneimittelanzahl entsprechen)
+- ✅ Vollständige Arzneimittelauflistung (PZN, Menge, Preis-Validierung)
+- ✅ Sieben-Tage-Gültigkeitsprüfung gemäß BtMG §3
+- ✅ ICD-10 Diagnosecode-Anforderungsprüfung
+- ✅ Kontext-Metadaten-Speicherung für validatorübergreifende Nutzung
 
-**Nächste Schritte:**
-- Implementierung BTM-001: E-BTM Gebühr validieren (SOK-Code-Validierung)
-- Implementierung BTM-002: Sicherstellen, dass alle Artikel PZN/SOK-Codes haben
-- Implementierung BTM-003: Verordnungsdatum ≤ 7 Tage alt prüfen
-- Implementierung BTM-004: Vorhandensein des Diagnosecodes validieren
+**Validierungslogik:**
+- BTM-001: Validiert E-BTM Gebühren-SOK-Code (02567001) mit Faktor passend zur BTM-Zeilenanzahl
+- BTM-002: Stellt sicher, dass alle BTM-Medikamente vollständige PZN-, Mengen- und Preisdaten haben
+- BTM-003: Warnt, wenn Abgabe >7 Tage nach Verschreibung erfolgt (BtMG §3 Gültigkeitsregel)
+- BTM-004: Warnt, wenn BTM-Verschreibung Diagnosecode fehlt (ICD-10 in Condition-Resource)
 
 ---
 
-### ⭕ Cannabis-Validierung (CAN) - 0/5 (0%)
+### ✅ Cannabis-Validierung (CAN) - 5/5 Vollständig
 
-**Validator:** Noch nicht implementiert
+**Validator:** `CannabisValidator.cs`
 
-| Regel | Beschreibung | Status | Priorität |
-|-------|--------------|--------|-----------|
-| CAN-001 | Cannabis-Sonderkennzeichen | ⭕ Ausstehend | Hoch |
-| CAN-002 | Keine BTM/T-Rezept-Substanzen | ⭕ Ausstehend | Hoch |
-| CAN-003 | Faktorfeld-Wert | ⭕ Ausstehend | Hoch |
-| CAN-004 | Bruttopreis-Berechnung | ⭕ Ausstehend | Mittel |
-| CAN-005 | Herstellungsdaten erforderlich | ⭕ Ausstehend | Mittel |
+| Regel | Beschreibung | Status | Implementierung |
+|-------|--------------|--------|-----------------|
+| CAN-001 | Cannabis-Sonderkennzeichen | ✅ Vollständig | `CannabisValidator` |
+| CAN-002 | Keine BTM/T-Rezept-Substanzen | ✅ Vollständig | `CannabisValidator` |
+| CAN-003 | Faktorfeld-Wert | ✅ Vollständig | `CannabisValidator` |
+| CAN-004 | Bruttopreis-Berechnung | ✅ Vollständig | `CannabisValidator` |
+| CAN-005 | Herstellungsdaten erforderlich | ✅ Vollständig | `CannabisValidator` |
 
-**Anforderungen:**
-- Cannabis-Erkennung über ABDATA (Cannabis-Flag = 2 oder 3)
-- Sonderkennzeichen-Validierung (SOK-Codes für Cannabis)
-- Herstellungsdaten-Extraktion aus FHIR
-- Cannabis-spezifische Preisberechnung
+**Funktionen:**
+- ✅ Cannabis-Erkennung über ABDATA Batch-Lookup (Cannabis-Flag = 2 oder 3)
+- ✅ Gültige SOK-Codes: 06461446, 06461423, 06460665, 06460694, 06460748, 06460754
+- ✅ BTM/T-Rezept-Ausschlussprüfung (Cannabis ist gegenseitig ausschließend mit BTM)
+- ✅ Faktor = 1 Validierung für Cannabis-Sonderkennzeichen-Zeilen
+- ✅ Bruttopreis-Validierung einschließlich AMPreisV-Regeln
+- ✅ Herstellungsdaten-Vollständigkeitsprüfung (Herstellungssegment)
+- ✅ Kontext-Metadaten-Speicherung für validatorübergreifende Nutzung
 
-**Verfügbare Daten:**
-- ✅ Cannabis-Flag in ABDATA PAC_APO-Tabelle
-- ✅ Cannabis-Erkennung in `PacApoArticle.IsCannabis`
+**Validierungslogik:**
+- CAN-001: Validiert Cannabis-SOK-Codes aus TA1 Anhang 10 gemäß § 31 Abs. 6 SGB V
+- CAN-002: Stellt sicher, dass keine BTM (Btm=2) oder T-Rezept (Btm=4) Substanzen in Cannabis-Zubereitungen enthalten sind
+- CAN-003: Validiert Faktor = 1 (oder 1.000000) in Cannabis-Sonderkennzeichen-Zeile
+- CAN-004: Validiert Bruttopreis-Berechnung gegen Anhang 10 Preistabellen
+- CAN-005: Stellt sicher, dass Herstellerkennzeichen, Zeitstempel, Zähler und Chargenbezeichnung vorhanden sind
 
 ---
 
@@ -242,34 +254,34 @@
 - [x] TA1-Referenzdatenbank
 - [x] Value Objects (Money, PromilleFactor, Pzn, SokCode, PriceIdentifier)
 
-### Phase 2: BTM-Validierung 🔄 ALS NÄCHSTES
+### Phase 2: BTM-Validierung ✅ ABGESCHLOSSEN
 **Priorität:** Hoch
-**Geschätzter Aufwand:** 2-3 Tage
+**Abgeschlossen:** 01.02.2026
 
-- [ ] BTM-001: E-BTM Gebühren-Sonderkennzeichen
-- [ ] BTM-002: Alle Arzneimittel müssen aufgeführt sein
-- [ ] BTM-003: Sieben-Tage-Gültigkeitsregel
-- [ ] BTM-004: Diagnose-Anforderung
+- [x] BTM-001: E-BTM Gebühren-Sonderkennzeichen
+- [x] BTM-002: Alle Arzneimittel müssen aufgeführt sein
+- [x] BTM-003: Sieben-Tage-Gültigkeitsregel
+- [x] BTM-004: Diagnose-Anforderung
 
 **Voraussetzungen:**
 - ✅ ABDATA BTM-Erkennung verfügbar
 - ✅ Datumsverarbeitungs-Infrastruktur
-- ⭕ Diagnosecode-Extraktion aus FHIR
+- ✅ Diagnosecode-Extraktion aus FHIR
 
-### Phase 3: Cannabis-Validierung 📅 GEPLANT
+### Phase 3: Cannabis-Validierung ✅ ABGESCHLOSSEN
 **Priorität:** Hoch
-**Geschätzter Aufwand:** 2-3 Tage
+**Abgeschlossen:** 01.02.2026
 
-- [ ] CAN-001: Cannabis-Sonderkennzeichen
-- [ ] CAN-002: Keine BTM/T-Rezept-Substanzen
-- [ ] CAN-003: Faktorfeld-Wert
-- [ ] CAN-004: Bruttopreis-Berechnung
-- [ ] CAN-005: Herstellungsdaten erforderlich
+- [x] CAN-001: Cannabis-Sonderkennzeichen
+- [x] CAN-002: Keine BTM/T-Rezept-Substanzen
+- [x] CAN-003: Faktorfeld-Wert
+- [x] CAN-004: Bruttopreis-Berechnung
+- [x] CAN-005: Herstellungsdaten erforderlich
 
 **Voraussetzungen:**
 - ✅ ABDATA Cannabis-Erkennung verfügbar
-- ⭕ Cannabis-spezifische SOK-Codes in Datenbank
-- ⭕ Herstellungsdaten-Extraktion
+- ✅ Cannabis-spezifische SOK-Codes im Validator
+- ✅ Herstellungsdaten-Extraktion
 
 ### Phase 4: Rezeptur-Validierung 📅 GEPLANT
 **Priorität:** Mittel-Hoch
@@ -376,6 +388,6 @@
 ---
 
 **Bericht Erstellt:** 01.02.2026
-**Implementierungsfortschritt:** 27% (18/67 Regeln)
-**Nächster Meilenstein:** BTM-Validierung (4 Regeln)
+**Implementierungsfortschritt:** 40% (27/67 Regeln)
+**Nächster Meilenstein:** Rezeptur-Validierung - REZ Hochpriorität (5 Regeln)
 **Ziel-Fertigstellung:** Vollständige Validierungsabdeckung bis Q1 2026

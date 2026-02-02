@@ -2,9 +2,9 @@
 
 **Last Updated:** 2026-02-01
 **Total Rules in TA1 Spec:** 67 rules
-**Implemented:** 18 rules (27%)
+**Implemented:** 27 rules (40%)
 **In Progress:** 0 rules
-**Pending:** 49 rules (73%)
+**Pending:** 40 rules (60%)
 
 ---
 
@@ -15,8 +15,8 @@
 | **Format (FMT)** | 10 | 10 | 0 | ✅ Complete |
 | **General (GEN)** | 8 | 8 | 0 | ✅ Complete |
 | **Calculation (CALC)** | 7 | 7 | 0 | ✅ Complete |
-| **BTM** | 4 | 1 | 3 | 🟡 25% |
-| **Cannabis (CAN)** | 5 | 0 | 5 | ⭕ 0% |
+| **BTM** | 4 | 4 | 0 | ✅ Complete |
+| **Cannabis (CAN)** | 5 | 5 | 0 | ✅ Complete |
 | **Compounding (REZ)** | 21 | 0 | 21 | ⭕ 0% |
 | **Fees (FEE)** | 3 | 0 | 3 | ⭕ 0% |
 | **Special Cases (SPC)** | 8 | 0 | 8 | ⭕ 0% |
@@ -89,51 +89,63 @@
 
 ---
 
-### 🟡 BTM Validation - 1/4 (25%)
+### ✅ BTM Validation - 4/4 Complete
 
-**Validator:** `BtmDetectionValidator.cs` (basic detection only)
+**Validator:** `BtmDetectionValidator.cs`
 
-| Rule | Description | Status | Priority |
-|------|-------------|--------|----------|
-| BTM-001 | E-BTM fee special code | ⭕ Pending | High |
-| BTM-002 | All pharmaceuticals must be listed | ⭕ Pending | High |
-| BTM-003 | BTM seven-day validity rule | ⭕ Pending | High |
-| BTM-004 | BTM diagnosis requirement | ⭕ Pending | Medium |
+| Rule | Description | Status | Implementation |
+|------|-------------|--------|----------------|
+| BTM-001 | E-BTM fee special code | ✅ Complete | `BtmDetectionValidator` |
+| BTM-002 | All pharmaceuticals must be listed | ✅ Complete | `BtmDetectionValidator` |
+| BTM-003 | BTM seven-day validity rule | ✅ Complete | `BtmDetectionValidator` |
+| BTM-004 | BTM diagnosis requirement | ✅ Complete | `BtmDetectionValidator` |
 
-**Current Implementation:**
-- ✅ BTM detection via ABDATA (Btm flag = 2)
-- ✅ Basic classification (BTM, Exempt, T-Rezept)
-- ⭕ Business logic validation pending
+**Features:**
+- ✅ BTM detection via ABDATA batch lookup (Btm flag = 2)
+- ✅ T-Rezept detection (Btm flag = 4)
+- ✅ BTM exempt preparation detection (Btm flag = 3)
+- ✅ E-BTM fee special code validation (SOK 02567001)
+- ✅ Fee factor validation (must equal BTM medication count)
+- ✅ Complete pharmaceutical listing (PZN, quantity, price validation)
+- ✅ Seven-day validity check per BtMG §3
+- ✅ ICD-10 diagnosis code requirement check
+- ✅ Context metadata storage for cross-validator usage
 
-**Next Steps:**
-- Implement BTM-001: Validate E-BTM fee (SOK code validation)
-- Implement BTM-002: Ensure all items have PZN/SOK codes
-- Implement BTM-003: Check prescription date ≤ 7 days old
-- Implement BTM-004: Validate diagnosis code presence
+**Validation Logic:**
+- BTM-001: Validates E-BTM fee SOK code (02567001) with factor matching BTM line item count
+- BTM-002: Ensures all BTM medications have complete PZN, quantity, and price data
+- BTM-003: Warns if dispensing occurs >7 days after prescription (BtMG §3 validity rule)
+- BTM-004: Warns if BTM prescription lacks diagnosis code (ICD-10 in Condition resource)
 
 ---
 
-### ⭕ Cannabis Validation (CAN) - 0/5 (0%)
+### ✅ Cannabis Validation (CAN) - 5/5 Complete
 
-**Validator:** Not yet implemented
+**Validator:** `CannabisValidator.cs`
 
-| Rule | Description | Status | Priority |
-|------|-------------|--------|----------|
-| CAN-001 | Cannabis special codes | ⭕ Pending | High |
-| CAN-002 | No BTM/T-Rezept substances | ⭕ Pending | High |
-| CAN-003 | Faktor field value | ⭕ Pending | High |
-| CAN-004 | Bruttopreis calculation | ⭕ Pending | Medium |
-| CAN-005 | Manufacturing data required | ⭕ Pending | Medium |
+| Rule | Description | Status | Implementation |
+|------|-------------|--------|----------------|
+| CAN-001 | Cannabis special codes | ✅ Complete | `CannabisValidator` |
+| CAN-002 | No BTM/T-Rezept substances | ✅ Complete | `CannabisValidator` |
+| CAN-003 | Faktor field value | ✅ Complete | `CannabisValidator` |
+| CAN-004 | Bruttopreis calculation | ✅ Complete | `CannabisValidator` |
+| CAN-005 | Manufacturing data required | ✅ Complete | `CannabisValidator` |
 
-**Requirements:**
-- Cannabis detection via ABDATA (Cannabis flag = 2 or 3)
-- Special code validation (SOK codes for cannabis)
-- Manufacturing data extraction from FHIR
-- Price calculation specific to cannabis
+**Features:**
+- ✅ Cannabis detection via ABDATA batch lookup (Cannabis flag = 2 or 3)
+- ✅ Valid SOK codes: 06461446, 06461423, 06460665, 06460694, 06460748, 06460754
+- ✅ BTM/T-Rezept exclusion check (Cannabis is mutually exclusive with BTM)
+- ✅ Factor = 1 validation for Cannabis special code lines
+- ✅ Bruttopreis validation including AMPreisV rules
+- ✅ Manufacturing data completeness check (Herstellungssegment)
+- ✅ Context metadata storage for cross-validator usage
 
-**Data Available:**
-- ✅ Cannabis flag in ABDATA PAC_APO table
-- ✅ Cannabis detection in `PacApoArticle.IsCannabis`
+**Validation Logic:**
+- CAN-001: Validates Cannabis SOK codes from TA1 Annex 10 per § 31 Abs. 6 SGB V
+- CAN-002: Ensures no BTM (Btm=2) or T-Rezept (Btm=4) substances in Cannabis preparations
+- CAN-003: Validates Factor = 1 (or 1.000000) in Cannabis special code line
+- CAN-004: Validates gross price calculation against Annex 10 pricing tables
+- CAN-005: Ensures manufacturer ID, timestamp, counter, and batch designation present
 
 ---
 
@@ -242,34 +254,34 @@
 - [x] TA1 reference database
 - [x] Value objects (Money, PromilleFactor, Pzn, SokCode, PriceIdentifier)
 
-### Phase 2: BTM Validation 🔄 NEXT
+### Phase 2: BTM Validation ✅ COMPLETE
 **Priority:** High
-**Estimated Effort:** 2-3 days
+**Completed:** 2026-02-01
 
-- [ ] BTM-001: E-BTM fee special code
-- [ ] BTM-002: All pharmaceuticals must be listed
-- [ ] BTM-003: Seven-day validity rule
-- [ ] BTM-004: Diagnosis requirement
+- [x] BTM-001: E-BTM fee special code
+- [x] BTM-002: All pharmaceuticals must be listed
+- [x] BTM-003: Seven-day validity rule
+- [x] BTM-004: Diagnosis requirement
 
 **Prerequisites:**
 - ✅ ABDATA BTM detection available
 - ✅ Date handling infrastructure
-- ⭕ Diagnosis code extraction from FHIR
+- ✅ Diagnosis code extraction from FHIR
 
-### Phase 3: Cannabis Validation 📅 PLANNED
+### Phase 3: Cannabis Validation ✅ COMPLETE
 **Priority:** High
-**Estimated Effort:** 2-3 days
+**Completed:** 2026-02-01
 
-- [ ] CAN-001: Cannabis special codes
-- [ ] CAN-002: No BTM/T-Rezept substances
-- [ ] CAN-003: Faktor field value
-- [ ] CAN-004: Bruttopreis calculation
-- [ ] CAN-005: Manufacturing data required
+- [x] CAN-001: Cannabis special codes
+- [x] CAN-002: No BTM/T-Rezept substances
+- [x] CAN-003: Faktor field value
+- [x] CAN-004: Bruttopreis calculation
+- [x] CAN-005: Manufacturing data required
 
 **Prerequisites:**
 - ✅ ABDATA Cannabis detection available
-- ⭕ Cannabis-specific SOK codes in database
-- ⭕ Manufacturing data extraction
+- ✅ Cannabis-specific SOK codes in validator
+- ✅ Manufacturing data extraction
 
 ### Phase 4: Compounding Validation 📅 PLANNED
 **Priority:** Medium-High
@@ -376,6 +388,6 @@
 ---
 
 **Report Generated:** 2026-02-01
-**Implementation Progress:** 27% (18/67 rules)
-**Next Milestone:** BTM Validation (4 rules)
+**Implementation Progress:** 40% (27/67 rules)
+**Next Milestone:** Compounding Validation - High Priority REZ rules (5 rules)
 **Target Completion:** Full validation coverage by Q1 2026
